@@ -1,0 +1,31 @@
+"$schema" = "https://open-api.netlify.com/netlify.schema.json"
+
+[build]
+  command = "npm run build:netlify"
+  publish = "frontend/dist"
+  functions = "netlify/functions"
+
+[context.production.environment]
+  VITE_APP_ENV = "production"
+
+[context.branch-deploy.environment]
+  VITE_APP_ENV = "staging"
+
+[context.dev.environment]
+  VITE_APP_ENV = "development"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["@prisma/client"]
+  included_files = ["node_modules/.prisma/client/**", "backend/node_modules/.prisma/client/**"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

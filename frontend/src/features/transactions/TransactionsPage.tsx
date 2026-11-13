@@ -1,0 +1,652 @@
+import React, { useState } from 'react';
+import { api } from '../../lib/api';
+import type { TransactionItem, CreateTransactionPayload, PaymentMethod } from '../../lib/api';
+import { useNotification } from '../../components/ui/NotificationProvider';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  faPlus,
+  faTrashCan,
+  faPenToSquare,
+  faArrowRightArrowLeft,
+  faFilter,
+  faArrowTrendUp,
+  faArrowTrendDown,
+  faMagnifyingGlass,
+  faChevronLeft,
+  faChevronRight,
+} from '@fortawesome/free-solid-svg-icons';
+
+interface TransactionsPageProps {
+  transactions: TransactionItem[];
+  onRefresh: () => void;
+  formatRupiah: (val: number) => string;
+}
+
+export const METHOD_LABELS: Record<PaymentMethod, { name: string; tag: string; badge: string }> = {
+  tunai_toko: { name: 'Kas di Toko (Laci)', tag: 'Toko', badge: 'bg-blue-50 text-blue-700' },
+  tunai_kas_besar: { name: 'Kas Besar (Brankas)', tag: 'Kas Besar', badge: 'bg-indigo-50 text-indigo-700' },
+  qris_dana: { name: 'QRIS DANA', tag: 'DANA', badge: 'bg-sky-50 text-sky-700' },
+  qris_gopay: { name: 'QRIS GoPay', tag: 'GoPay', badge: 'bg-emerald-50 text-emerald-700' },
+};
+
+export const TransactionsPage: React.FC<TransactionsPageProps> = ({
+  transactions,
+  onRefresh,
+  formatRupiah,
+}) => {
+  const { showToast, confirm } = useNotification();
+
+  // Modal Transaksi Baru / Edit
+  const [showModal, setShowModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<TransactionItem | null>(null);
+
+  // Modal Pindah Kas (Transfer)
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [fromMethod, setFromMethod] = useState<PaymentMethod>('tunai_toko');
+  const [toMethod, setToMethod] = useState<PaymentMethod>('tunai_kas_besar');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferDesc, setTransferDesc] = useState('');
+  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Filter & Pagination State
+  const [filterType, setFilterType] = useState<string>('all');
+  const [filterMethod, setFilterMethod] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 15;
+
+  // Form State (Create / Edit)
+  const [type, setType] = useState<'income' | 'expense'>('income');
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('tunai_toko');
+  const [description, setDescription] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const openCreateModal = () => {
+    setEditingItem(null);
+    setType('income');
+    setAmount('');
+    setMethod('tunai_toko');
+    setDescription('');
+    setDate(new Date().toISOString().slice(0, 10));
+    setShowModal(true);
+  };
+
+  const openEditModal = (trx: TransactionItem) => {
+    setEditingItem(trx);
+    setType(trx.type === 'expense' || trx.type === 'transfer_out' ? 'expense' : 'income');
+    setAmount(String(trx.amount));
+    setMethod(trx.method);
+    setDescription(trx.description);
+    setDate(new Date(trx.date).toISOString().slice(0, 10));
+    setShowModal(true);
+  };
+
+  const filteredList = transactions.filter((t) => {
+    if (filterType !== 'all' && t.type !== filterType) return false;
+    if (filterMethod !== 'all' && t.method !== filterMethod) return false;
+    if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase();
+      if (!t.description.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedList = filteredList.slice(
+    (safePage - 1) * ITEMS_PER_PAGE,
+    safePage * ITEMS_PER_PAGE
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amount || !description) return;
+
+    setIsSubmitting(true);
+    try {
+      if (editingItem) {
+        await api.updateTransaction(editingItem.id, {
+          type,
+          amount: parseInt(amount, 10),
+          method,
+          description,
+          date,
+        });
+        showToast('success', 'Transaksi Diperbarui', `Data "${description}" berhasil disimpan.`);
+      } else {
+        const payload: CreateTransactionPayload = {
+          type,
+          amount: parseInt(amount, 10),
+          method,
+          description,
+          date,
+        };
+        await api.createTransaction(payload);
+        showToast(
+          'success',
+          'Transaksi Berhasil Dicatat',
+          `${type === 'income' ? 'Pemasukan' : 'Pengeluaran'} senilai ${formatRupiah(parseInt(amount, 10))} telah tersimpan.`
+        );
+      }
+      setShowModal(false);
+      onRefresh();
+    } catch (err: any) {
+      showToast('error', 'Gagal Menyimpan Transaksi', err.message || 'Terjadi kesalahan sistem.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleTransferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (fromMethod === toMethod) {
+      showToast('error', 'Pos Kas Tidak Valid', 'Pos kas asal dan tujuan tidak boleh sama.');
+      return;
+    }
+    if (!transferAmount) return;
+
+    setIsSubmitting(true);
+    try {
+      await api.transferFunds({
+        fromMethod,
+        toMethod,
+        amount: parseInt(transferAmount, 10),
+        description: transferDesc || undefined,
+        date: transferDate,
+      });
+      setShowTransferModal(false);
+      setTransferAmount('');
+      setTransferDesc('');
+      showToast(
+        'success',
+        'Pindah Kas Berhasil',
+        `Dana ${formatRupiah(parseInt(transferAmount, 10))} berhasil dipindahkan dari ${METHOD_LABELS[fromMethod].tag} ke ${METHOD_LABELS[toMethod].tag}.`
+      );
+      onRefresh();
+    } catch (err: any) {
+      showToast('error', 'Gagal Pindah Kas', err.message || 'Terjadi kesalahan sistem.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = (id: string, desc: string) => {
+    confirm({
+      title: 'Hapus Transaksi?',
+      message: `Apakah Anda yakin ingin menghapus transaksi "${desc}"? Saldo kas akan otomatis disesuaikan kembali.`,
+      confirmLabel: 'Ya, Hapus Transaksi',
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          await api.deleteTransaction(id);
+          showToast('success', 'Transaksi Dihapus', `Transaksi "${desc}" telah dihapus.`);
+          onRefresh();
+        } catch (err: any) {
+          showToast('error', 'Gagal Menghapus', err.message || 'Terjadi kesalahan sistem.');
+        }
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header Halaman Transaksi */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight font-jakarta">Transaksi Kas</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Catat pemasukan, pengeluaran, atau pindah saldo antar pos kas warteg.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowTransferModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors"
+          >
+            <FontAwesomeIcon icon={faArrowRightArrowLeft} className="text-orange-600 text-[11px]" />
+            <span>Pindah Kas</span>
+          </button>
+
+          <button
+            onClick={openCreateModal}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold shadow-2xs transition-colors"
+          >
+            <FontAwesomeIcon icon={faPlus} className="text-[11px]" />
+            <span>Catat Transaksi</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="bg-white px-4 py-3 rounded-xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-1 min-w-[220px]">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 shrink-0">
+            <FontAwesomeIcon icon={faFilter} className="text-slate-400 text-[11px]" />
+            <span>Filter Mutasi:</span>
+          </div>
+
+          <div className="relative flex-1 max-w-xs">
+            <FontAwesomeIcon
+              icon={faMagnifyingGlass}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Cari keterangan transaksi..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 bg-slate-50/50 focus:bg-white focus:border-orange-500 outline-hidden transition-colors"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <select
+            value={filterType}
+            onChange={(e) => {
+              setFilterType(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 bg-white outline-hidden"
+          >
+            <option value="all">Semua Tipe</option>
+            <option value="income">Pemasukan (Masuk)</option>
+            <option value="expense">Pengeluaran (Keluar)</option>
+            <option value="transfer_in">Pindah Kas Masuk</option>
+            <option value="transfer_out">Pindah Kas Keluar</option>
+          </select>
+
+          <select
+            value={filterMethod}
+            onChange={(e) => {
+              setFilterMethod(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 bg-white outline-hidden"
+          >
+            <option value="all">Semua Pos Kas</option>
+            <option value="tunai_toko">Kas di Toko (Laci)</option>
+            <option value="tunai_kas_besar">Kas Besar (Brankas)</option>
+            <option value="qris_dana">QRIS DANA</option>
+            <option value="qris_gopay">QRIS GoPay</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Tabel Transaksi */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                <th className="py-3 px-5">Tanggal</th>
+                <th className="py-3 px-5">Keterangan</th>
+                <th className="py-3 px-5">Pos Kas</th>
+                <th className="py-3 px-5 text-right">Jumlah</th>
+                <th className="py-3 px-5 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginatedList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-400">
+                    Tidak ada transaksi yang sesuai filter.
+                  </td>
+                </tr>
+              ) : (
+                paginatedList.map((trx) => {
+                  const isPositive = trx.type === 'income' || trx.type === 'transfer_in';
+                  const isTransfer = trx.type === 'transfer_in' || trx.type === 'transfer_out';
+                  const methodMeta = METHOD_LABELS[trx.method] || {
+                    name: trx.method,
+                    tag: trx.method,
+                    badge: 'bg-slate-100 text-slate-700',
+                  };
+
+                  return (
+                    <tr key={trx.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3.5 px-5 text-slate-500 whitespace-nowrap">
+                        {new Date(trx.date).toLocaleDateString('id-ID', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </td>
+                      <td className="py-3.5 px-5 font-medium text-slate-800">
+                        {trx.description}
+                      </td>
+                      <td className="py-3.5 px-5">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${methodMeta.badge}`}
+                        >
+                          {methodMeta.name}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-bold whitespace-nowrap font-jakarta">
+                        <span
+                          className={`inline-flex items-center gap-1 ${
+                            isTransfer
+                              ? 'text-blue-600'
+                              : isPositive
+                              ? 'text-emerald-600'
+                              : 'text-rose-600'
+                          }`}
+                        >
+                          <FontAwesomeIcon
+                            icon={isPositive ? faArrowTrendUp : faArrowTrendDown}
+                            className="text-[10px]"
+                          />
+                          {formatRupiah(trx.amount)}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-5 text-right whitespace-nowrap space-x-1">
+                        {!isTransfer && (
+                          <button
+                            onClick={() => openEditModal(trx)}
+                            className="text-slate-400 hover:text-blue-600 p-1.5 rounded-md hover:bg-blue-50 transition-colors"
+                            title="Edit Transaksi"
+                          >
+                            <FontAwesomeIcon icon={faPenToSquare} className="text-xs" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDelete(trx.id, trx.description)}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50 transition-colors"
+                          title="Hapus Transaksi"
+                        >
+                          <FontAwesomeIcon icon={faTrashCan} className="text-xs" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer Pagination */}
+        {filteredList.length > 0 && (
+          <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+            <div>
+              Menampilkan{' '}
+              <span className="font-semibold text-slate-700">
+                {(safePage - 1) * ITEMS_PER_PAGE + 1}
+              </span>{' '}
+              –{' '}
+              <span className="font-semibold text-slate-700">
+                {Math.min(safePage * ITEMS_PER_PAGE, filteredList.length)}
+              </span>{' '}
+              dari <span className="font-semibold text-slate-700">{filteredList.length}</span> transaksi
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="px-2.5 py-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <FontAwesomeIcon icon={faChevronLeft} className="text-[10px]" />
+                </button>
+                <span className="px-2 font-semibold text-slate-700">
+                  Hal {safePage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="px-2.5 py-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <FontAwesomeIcon icon={faChevronRight} className="text-[10px]" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* MODAL 1: INPUT / EDIT TRANSAKSI */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-5">
+            <h3 className="text-base font-bold text-slate-900 font-jakarta">
+              {editingItem ? 'Edit Transaksi Kas' : 'Catat Transaksi Baru'}
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Tipe Transaksi */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Jenis Transaksi
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setType('income')}
+                    className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                      type === 'income'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                        : 'border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    + Pemasukan (Masuk)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setType('expense')}
+                    className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                      type === 'expense'
+                        ? 'bg-rose-50 border-rose-500 text-rose-700'
+                        : 'border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    - Pengeluaran (Keluar)
+                  </button>
+                </div>
+              </div>
+
+              {/* Nominal & Tanggal */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Nominal (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="150000"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-hidden focus:border-orange-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Tanggal Transaksi
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-hidden focus:border-orange-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Pilih Pos Kas */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  Pilih Pos Kas
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(METHOD_LABELS) as PaymentMethod[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setMethod(key)}
+                      className={`p-2.5 rounded-lg text-xs text-left border transition-colors ${
+                        method === key
+                          ? 'bg-orange-50/70 border-orange-500 text-orange-800 font-bold'
+                          : 'border-slate-200 text-slate-600'
+                      }`}
+                    >
+                      <p className="font-semibold">{METHOD_LABELS[key].name}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Keterangan */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Keterangan Transaksi
+                </label>
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Contoh: Belanja Bumbu Dapur / Omset Shift Siang"
+                  className="w-full px-3.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-hidden focus:border-orange-500"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold shadow-2xs disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Menyimpan...' : editingItem ? 'Simpan Perubahan' : 'Simpan Transaksi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: PINDAH KAS ANTAR KANTONG (TRANSFER) */}
+      {showTransferModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-5">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 font-jakarta">Pindah Kas (Transfer Internal)</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Pindahkan dana antar pos (misal: Setor Laci Toko ke Kas Besar) tanpa mengubah laporan omset/pengeluaran mingguan.
+              </p>
+            </div>
+
+            <form onSubmit={handleTransferSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Dari Pos Kas (Asal)
+                  </label>
+                  <select
+                    value={fromMethod}
+                    onChange={(e) => setFromMethod(e.target.value as PaymentMethod)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white font-medium"
+                  >
+                    <option value="tunai_toko">Kas di Toko (Laci)</option>
+                    <option value="tunai_kas_besar">Kas Besar (Brankas)</option>
+                    <option value="qris_dana">QRIS DANA</option>
+                    <option value="qris_gopay">QRIS GoPay</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Ke Pos Kas (Tujuan)
+                  </label>
+                  <select
+                    value={toMethod}
+                    onChange={(e) => setToMethod(e.target.value as PaymentMethod)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white font-medium"
+                  >
+                    <option value="tunai_toko">Kas di Toko (Laci)</option>
+                    <option value="tunai_kas_besar">Kas Besar (Brankas)</option>
+                    <option value="qris_dana">QRIS DANA</option>
+                    <option value="qris_gopay">QRIS GoPay</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Nominal Pindah (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                    placeholder="500000"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Tanggal
+                  </label>
+                  <input
+                    type="date"
+                    value={transferDate}
+                    onChange={(e) => setTransferDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Catatan (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={transferDesc}
+                  onChange={(e) => setTransferDesc(e.target.value)}
+                  placeholder="Contoh: Setoran rutin malam hari"
+                  className="w-full px-3.5 py-2 rounded-lg border border-slate-200 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTransferModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold shadow-2xs disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Memproses...' : 'Proses Pindah Kas'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

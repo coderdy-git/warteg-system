@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+.netlify/
+backend/node_modules/
+backend/dist/
+backend/.env
+backend/prisma/*.db
+backend/prisma/*.db-journal
+frontend/node_modules/
+frontend/dist/
