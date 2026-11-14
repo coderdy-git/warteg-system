@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { api } from '../../lib/api';
-import type { TransactionItem, CreateTransactionPayload, PaymentMethod } from '../../lib/api';
+import type { TransactionItem, CreateTransactionPayload, PaymentMethod, ReceiptScanResult } from '../../lib/api';
 import { useNotification } from '../../components/ui/NotificationProvider';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -14,6 +14,8 @@ import {
   faMagnifyingGlass,
   faChevronLeft,
   faChevronRight,
+  faCamera,
+  faWandMagicSparkles,
 } from '@fortawesome/free-solid-svg-icons';
 
 interface TransactionsPageProps {
@@ -62,6 +64,55 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Vision AI OCR Scan State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ReceiptScanResult | null>(null);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('error', 'File Tidak Valid', 'Silakan unggah file foto/gambar bon belanja.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result as string;
+      setPreviewImage(base64Data);
+      setShowScanModal(true);
+      setIsScanning(true);
+      setScanResult(null);
+
+      try {
+        const result = await api.scanReceipt(base64Data);
+        setScanResult(result);
+        showToast('success', 'Struk Terbaca', `Berhasil mendeteksi nominal: ${formatRupiah(result.totalAmount)}`);
+      } catch (err: any) {
+        showToast('error', 'Gagal Membaca Struk', err.message || 'Coba ambil foto dengan pencahayaan lebih jelas.');
+      } finally {
+        setIsScanning(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applyScanResult = () => {
+    if (!scanResult) return;
+    setType('expense');
+    setAmount(String(scanResult.totalAmount));
+    setDescription(scanResult.description);
+    setDate(scanResult.date);
+    setShowScanModal(false);
+    setShowModal(true);
+    showToast('info', 'Data Diterapkan', 'Silakan pilih pos kas lalu klik Simpan.');
+  };
 
   const openCreateModal = () => {
     setEditingItem(null);
@@ -201,7 +252,27 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          {/* Input File Tersembunyi dengan dukungan kamera native HP */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-semibold shadow-2xs transition-all active:scale-95"
+            title="Foto Struk / Bon Belanja Pasar"
+          >
+            <FontAwesomeIcon icon={faCamera} className="text-xs" />
+            <span>Scan Struk</span>
+          </button>
+
           <button
             onClick={() => setShowTransferModal(true)}
             className="flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors"
@@ -742,6 +813,98 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL 3: HASIL SCAN STRUK VISION AI */}
+      {showScanModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center text-xs">
+                  <FontAwesomeIcon icon={faCamera} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 font-jakarta">Scan Struk Belanja AI</h3>
+                  <p className="text-[10px] text-slate-400">Ekstraksi otomatis foto bon / nota pasar</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScanModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Preview Foto */}
+            {previewImage && (
+              <div className="w-full h-40 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center border border-slate-200 relative">
+                <img
+                  src={previewImage}
+                  alt="Struk Belanja"
+                  className="w-full h-full object-contain"
+                />
+                {isScanning && (
+                  <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-2xs flex flex-col items-center justify-center text-white gap-2">
+                    <FontAwesomeIcon icon={faWandMagicSparkles} className="text-xl animate-spin text-orange-400" />
+                    <span className="text-xs font-semibold">Menganalisis Struk Belanja...</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Hasil Ekstraksi */}
+            {scanResult && !isScanning && (
+              <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Belanja Terdeteksi</span>
+                  <div className="text-xl font-extrabold text-rose-600 font-jakarta">
+                    {formatRupiah(scanResult.totalAmount)}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Keterangan Pengeluaran</span>
+                  <p className="text-xs font-bold text-slate-800 mt-0.5">{scanResult.description}</p>
+                </div>
+
+                {scanResult.items && scanResult.items.length > 0 && (
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Daftar Item:</span>
+                    <div className="max-h-24 overflow-y-auto space-y-1">
+                      {scanResult.items.map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-[11px] text-slate-600 border-b border-slate-200/50 pb-0.5">
+                          <span className="truncate pr-2">{item.name}</span>
+                          <span className="font-semibold text-slate-800">{formatRupiah(item.price)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowScanModal(false)}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Tutup
+              </button>
+              {scanResult && !isScanning && (
+                <button
+                  type="button"
+                  onClick={applyScanResult}
+                  className="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold shadow-2xs active:scale-95 transition-all"
+                >
+                  Gunakan Data Ini
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

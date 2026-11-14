@@ -75,6 +75,14 @@ export interface FinancialReport {
   }[];
 }
 
+export interface ReceiptScanResult {
+  totalAmount: number;
+  description: string;
+  date: string;
+  suggestedType: 'expense' | 'income';
+  items?: { name: string; price: number }[];
+}
+
 export interface AISettingsData {
   baseUrl: string;
   apiKey: string;
@@ -82,6 +90,10 @@ export interface AISettingsData {
   hasApiKey: boolean;
   model: string;
   isConfigured: boolean;
+  visionBaseUrl?: string;
+  visionModel?: string;
+  maskedVisionApiKey?: string;
+  hasVisionApiKey?: boolean;
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
@@ -246,6 +258,17 @@ export const api = {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Gagal berkomunikasi dengan AI');
+    return json.data;
+  },
+
+  async scanReceipt(imageBase64: string): Promise<ReceiptScanResult> {
+    const res = await fetch(`${API_BASE}/ai/scan-receipt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ imageBase64 }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Gagal menganalisis foto struk');
     return json.data;
   },
 };

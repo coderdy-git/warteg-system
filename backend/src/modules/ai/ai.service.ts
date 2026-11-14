@@ -98,4 +98,101 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}
       'Maaf, saya tidak menerima respons dari model DeepSeek.'
     );
   }
+
+  async scanReceipt(imageBase64: string): Promise<{
+    totalAmount: number;
+    description: string;
+    date: string;
+    suggestedType: 'expense' | 'income';
+    items?: { name: string; price: number }[];
+  }> {
+    const config = await this.settingsRepo.getSettings();
+
+    // Prioritaskan konfigurasi Vision khusus jika diatur, atau fallback ke config utama / OpenRouter / Gemini
+    let visionBaseUrl = config.visionBaseUrl || config.baseUrl;
+    let visionApiKey = config.visionApiKey || config.apiKey;
+    let visionModel = config.visionModel || (config.model.includes('deepseek') ? 'google/gemini-2.0-flash-exp:free' : config.model);
+
+    // Jika base URL bawaan DeepSeek (yang tidak punya vision), fallback ke OpenRouter atau Google Gemini kompatibel endpoint jika belum diset
+    if (visionBaseUrl.includes('api.deepseek.com') && !config.visionBaseUrl) {
+      // Default ke OpenRouter multi-modal free/low-cost atau user vision endpoint
+      visionBaseUrl = 'https://openrouter.ai/api/v1';
+      visionModel = 'google/gemini-2.0-flash-exp:free';
+    }
+
+    if (!visionApiKey) {
+      throw new Error(
+        'API Key Vision AI belum dikonfigurasi. Silakan masukkan API Key di Pengaturan AI.'
+      );
+    }
+
+    const openai = new OpenAI({
+      baseURL: visionBaseUrl.trim(),
+      apiKey: visionApiKey.trim(),
+    });
+
+    // Pastikan format data URL base64 valid
+    let formattedImageUrl = imageBase64;
+    if (!imageBase64.startsWith('data:image/')) {
+      formattedImageUrl = `data:image/jpeg;base64,${imageBase64}`;
+    }
+
+    const promptText = `Kamu adalah sistem OCR AI cerdas kasir warteg Indonesia.
+Tugasmu adalah menganalisis gambar foto struk belanja, bon pasar, nota pembelian bahan baku warteg, atau catatan pengeluaran tangan/ketik.
+
+Ekstrak informasi berikut dan balas HANYA dalam format JSON valid murni (tanpa format markdown, tanpa petik tiga \`\`\`json, hanya raw JSON):
+{
+  "totalAmount": <angka_nominal_total_belanja_tanpa_titik_atau_koma_integer>,
+  "description": "<ringkasan_singkat_contoh_Belanja_Pasar_Bawang_Cabai_Telur>",
+  "date": "<tanggal_struk_format_YYYY-MM-DD_jika_tidak_tertera_gunakan_hari_ini>",
+  "suggestedType": "expense",
+  "items": [
+    { "name": "<nama_item>", "price": <harga_angka_integer> }
+  ]
+}
+
+Aturan:
+1. Jika foto berupa bon pasar / struk belanja / kwitansi, targetkan total akhir yang harus dibayarkan.
+2. Deskripsi harus ringkas dan jelas khas belanja warteg (contoh: "Belanja Pasar: Bumbu & Sayur", "Belanja Beras 50kg", "Belanja Gas Elpiji 3kg").
+3. Jika nominal tidak terlihat jelas, tebak perkiraan wajar berdasarkan item yang terbaca.`;
+
+    const response = await openai.chat.completions.create({
+      model: visionModel,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: promptText },
+            {
+              type: 'image_url',
+              image_url: {
+                url: formattedImageUrl,
+              },
+            },
+          ],
+        },
+      ],
+      temperature: 0.1,
+    });
+
+    const rawContent = response.choices[0]?.message?.content || '{}';
+    // Bersihkan dari backticks jika model menambahkan ```json ... ```
+    const cleanedJson = rawContent
+      .replace(/```json/gi, '')
+      .replace(/```/g, '')
+      .trim();
+
+    try {
+      const parsed = JSON.parse(cleanedJson);
+      return {
+        totalAmount: Number(parsed.totalAmount) || 0,
+        description: parsed.description || 'Belanja Pasar / Operasional Warteg',
+        date: parsed.date || new Date().toISOString().slice(0, 10),
+        suggestedType: 'expense',
+        items: Array.isArray(parsed.items) ? parsed.items : [],
+      };
+    } catch {
+      throw new Error('Gagal memproses struk: AI mengembalikan format tidak valid. Coba ulangi dengan foto yang lebih terang.');
+    }
+  }
 }

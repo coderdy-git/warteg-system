@@ -13,6 +13,9 @@ export function createSettingsRouter(): Router {
       const maskedKey = settings.apiKey
         ? settings.apiKey.slice(0, 4) + '••••••••' + settings.apiKey.slice(-4)
         : '';
+      const maskedVisionKey = settings.visionApiKey
+        ? settings.visionApiKey.slice(0, 4) + '••••••••' + settings.visionApiKey.slice(-4)
+        : '';
       res.json({
         success: true,
         data: {
@@ -22,6 +25,10 @@ export function createSettingsRouter(): Router {
           hasApiKey: Boolean(settings.apiKey),
           model: settings.model,
           isConfigured: Boolean(settings.baseUrl && settings.apiKey && settings.model),
+          visionBaseUrl: settings.visionBaseUrl || '',
+          visionModel: settings.visionModel || '',
+          maskedVisionApiKey: maskedVisionKey,
+          hasVisionApiKey: Boolean(settings.visionApiKey),
         },
       });
     } catch (err: any) {
@@ -32,14 +39,18 @@ export function createSettingsRouter(): Router {
   // Simpan pengaturan AI
   router.post('/ai', async (req: Request, res: Response) => {
     try {
-      const { baseUrl, apiKey, model } = req.body;
+      const { baseUrl, apiKey, model, visionBaseUrl, visionApiKey, visionModel } = req.body;
       const current = await repo.getSettings();
       // Jika apiKey kosong (tidak diubah oleh user), pertahankan apiKey lama di DB
       const finalApiKey = apiKey && apiKey.trim() !== '' ? apiKey.trim() : current.apiKey;
+      const finalVisionApiKey = visionApiKey && visionApiKey.trim() !== '' ? visionApiKey.trim() : current.visionApiKey;
       const updated = await repo.saveSettings({
         baseUrl: baseUrl?.trim(),
         apiKey: finalApiKey,
         model: model?.trim(),
+        visionBaseUrl: visionBaseUrl?.trim(),
+        visionApiKey: finalVisionApiKey,
+        visionModel: visionModel?.trim(),
       });
       res.json({
         success: true,

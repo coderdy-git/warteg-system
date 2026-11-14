@@ -19,5 +19,19 @@ export function createAIRouter(): Router {
     }
   });
 
+  router.post('/scan-receipt', async (req: Request, res: Response) => {
+    try {
+      const { imageBase64 } = req.body;
+      if (!imageBase64 || typeof imageBase64 !== 'string') {
+        return res.status(400).json({ success: false, message: 'Data gambar (imageBase64) diperlukan' });
+      }
+
+      const receiptData = await service.scanReceipt(imageBase64);
+      res.json({ success: true, data: receiptData });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   return router;
 }

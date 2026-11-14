@@ -4,13 +4,25 @@ export interface AISettings {
   baseUrl: string;
   apiKey: string;
   model: string;
+  visionBaseUrl?: string;
+  visionApiKey?: string;
+  visionModel?: string;
 }
 
 export class SettingsRepository {
   async getSettings(): Promise<AISettings> {
     const records = await prisma.appSetting.findMany({
       where: {
-        key: { in: ['ai_base_url', 'ai_api_key', 'ai_model'] },
+        key: {
+          in: [
+            'ai_base_url',
+            'ai_api_key',
+            'ai_model',
+            'ai_vision_base_url',
+            'ai_vision_api_key',
+            'ai_vision_model',
+          ],
+        },
       },
     });
 
@@ -20,40 +32,34 @@ export class SettingsRepository {
       baseUrl: map.get('ai_base_url') || 'https://api.deepseek.com',
       apiKey: map.get('ai_api_key') || '',
       model: map.get('ai_model') || 'deepseek-chat',
+      visionBaseUrl: map.get('ai_vision_base_url') || '',
+      visionApiKey: map.get('ai_vision_api_key') || '',
+      visionModel: map.get('ai_vision_model') || '',
     };
   }
 
   async saveSettings(settings: Partial<AISettings>) {
     const updates: Promise<any>[] = [];
 
-    if (settings.baseUrl !== undefined) {
-      updates.push(
-        prisma.appSetting.upsert({
-          where: { key: 'ai_base_url' },
-          update: { value: settings.baseUrl },
-          create: { key: 'ai_base_url', value: settings.baseUrl },
-        })
-      );
-    }
+    const fieldMap: Record<string, string | undefined> = {
+      ai_base_url: settings.baseUrl,
+      ai_api_key: settings.apiKey,
+      ai_model: settings.model,
+      ai_vision_base_url: settings.visionBaseUrl,
+      ai_vision_api_key: settings.visionApiKey,
+      ai_vision_model: settings.visionModel,
+    };
 
-    if (settings.apiKey !== undefined) {
-      updates.push(
-        prisma.appSetting.upsert({
-          where: { key: 'ai_api_key' },
-          update: { value: settings.apiKey },
-          create: { key: 'ai_api_key', value: settings.apiKey },
-        })
-      );
-    }
-
-    if (settings.model !== undefined) {
-      updates.push(
-        prisma.appSetting.upsert({
-          where: { key: 'ai_model' },
-          update: { value: settings.model },
-          create: { key: 'ai_model', value: settings.model },
-        })
-      );
+    for (const [key, val] of Object.entries(fieldMap)) {
+      if (val !== undefined) {
+        updates.push(
+          prisma.appSetting.upsert({
+            where: { key },
+            update: { value: val },
+            create: { key, value: val },
+          })
+        );
+      }
     }
 
     await Promise.all(updates);
