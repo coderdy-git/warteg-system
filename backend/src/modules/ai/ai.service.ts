@@ -63,10 +63,13 @@ Jawablah secara singkat, padat, ramah, dan to-the-point khas operasional warteg.
    - Contoh: Jika pengguna menyapa "Halo", cukup jawab salam singkat dan tawarkan bantuan. JANGAN lampirkan tabel saldo atau ringkasan 7 hari.
    - Contoh: Jika pengguna bertanya saldo kas toko, HANYA sebutkan saldo kas toko. Jangan sebutkan saldo pos lain kecuali diminta.
 
-2. KEMAMPUAN MENCATAT TRANSAKSI OTOMATIS:
-   - Jika pengguna bermaksud mencatat transaksi, atau mengirimkan foto nota/struk belanja:
-   - Berikan rincian singkat barang & total belanja.
-   - Jika pengguna meminta dicatat atau foto adalah struk belanja operasional warteg, sertakan blok JSON khusus di AKHIR jawabanmu dengan format berikut (HANYA JSON murni di dalam tag):
+2. KEMAMPUAN MEMBACA STRUK / CATATAN BELANJA PASAR & TULISAN TANGAN:
+   - Jika pengguna mengirim foto struk, bon pasar, faktur, nota kontan, atau coretan catatan belanja kertas (tulisan tangan kasir/koki):
+   - BACA DENGAN SANGAT CERMAT setiap baris item dan nominal harganya.
+   - Pahami singkatan khas belanja warteg Indonesia (contoh: "bwg mrh" = Bawang Merah, "cbe/cbi rwt" = Cabai Rawit, "tlg" = Telur, "minyak grg" = Minyak Goreng, "ayam ptg" = Ayam Potong, "tahu/tp" = Tahu/Tempe).
+   - Tampilkan rincian item yang terbaca beserta harganya, lalu jumlahkan totalnya secara akurat.
+   - Jika ada angka atau tulisan yang agak buram, berikan pembacaan terbaikmu dengan logika harga pasar yang wajar.
+   - Jika foto adalah pengeluaran belanja warteg, lampirkan blok JSON transaksi di akhir pesan:
    <<<TRANSACTION_RECORD>>>
    {
      "type": "expense",
@@ -76,8 +79,7 @@ Jawablah secara singkat, padat, ramah, dan to-the-point khas operasional warteg.
      "date": "YYYY-MM-DD"
    }
    <<<END_TRANSACTION_RECORD>>>
-   - Nilai "amount" WAJIB berupa angka integer murni (tanpa titik, tanpa 'Rp').
-   - Sistem backend akan membaca blok ini dan otomatis menyimpannya ke database warteg!
+   - Pastikan "amount" adalah total akhir dari penjumlahan item-item belanja tersebut (integer murni tanpa titik/koma/Rp).
 
 [DATA KEUANGAN UNTUK REFERENSI INTERNAL KAMU]
 - Total Saldo Kas: Rp ${summary.totalBalance.toLocaleString('id-ID')}
@@ -127,7 +129,10 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}`;
           }
           contentParts.push({
             type: 'image_url',
-            image_url: { url: imgUrl },
+            image_url: {
+              url: imgUrl,
+              detail: 'high',
+            },
           });
         }
 
@@ -147,7 +152,7 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}`;
       const response = await openai.chat.completions.create({
         model: targetModel,
         messages: formattedMessages,
-        temperature: 0.2,
+        temperature: hasImage ? 0.05 : 0.2,
       });
 
       let rawResponse = response.choices[0]?.message?.content || '';
@@ -270,6 +275,7 @@ Aturan:
               type: 'image_url',
               image_url: {
                 url: formattedImageUrl,
+                detail: 'high',
               },
             },
           ],

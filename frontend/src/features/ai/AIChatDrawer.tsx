@@ -50,7 +50,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  // Fungsi kompres gambar ke base64 sangat ringan (max 800px, quality 0.6) agar cepat & tidak melebihi payload serverless Netlify
+  // Fungsi kompres gambar ke base64 dengan resolusi optimal untuk OCR tulisan tangan & struk
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -59,7 +59,8 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_DIM = 800;
+          // 1500px memastikan teks kecil & tulisan tangan di kertas nota tetap tajam
+          const MAX_DIM = 1500;
           let width = img.width;
           let height = img.height;
 
@@ -78,10 +79,14 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+          }
 
-          // Gunakan JPEG kualitas 0.6 agar ukuran file kecil (rata-rata ~60KB - 120KB per gambar)
-          resolve(canvas.toDataURL('image/jpeg', 0.6));
+          // Kualitas 0.82 memberikan ketajaman huruf yang tinggi untuk OCR tanpa membebani memori
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
         };
       };
       reader.readAsDataURL(file);
