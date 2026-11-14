@@ -50,7 +50,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  // Fungsi kompres gambar ke base64 ringan
+  // Fungsi kompres gambar ke base64 sangat ringan (max 800px, quality 0.6) agar cepat & tidak melebihi payload serverless Netlify
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -59,7 +59,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_DIM = 1000;
+          const MAX_DIM = 800;
           let width = img.width;
           let height = img.height;
 
@@ -80,7 +80,8 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
 
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
+          // Gunakan JPEG kualitas 0.6 agar ukuran file kecil (rata-rata ~60KB - 120KB per gambar)
+          resolve(canvas.toDataURL('image/jpeg', 0.6));
         };
       };
       reader.readAsDataURL(file);

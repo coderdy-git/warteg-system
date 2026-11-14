@@ -258,6 +258,23 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify({ messages }),
     });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      console.error('Server non-JSON response:', text.slice(0, 300));
+      if (res.status === 413) {
+        throw new Error('Ukuran foto terlalu besar untuk server. Coba kirim 1 foto terlebih dahulu.');
+      }
+      if (res.status === 504 || res.status === 408) {
+        throw new Error('Waktu pemrosesan AI habis (timeout). Coba gunakan foto dengan resolusi lebih kecil.');
+      }
+      if (res.status === 401) {
+        throw new Error('Sesi login telah berakhir. Silakan logout lalu login kembali.');
+      }
+      throw new Error(`Server mengembalikan respon (${res.status}): Serverless function error atau rute tidak ditemukan.`);
+    }
+
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Gagal berkomunikasi dengan AI');
     return json.data;
@@ -269,6 +286,17 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify({ imageBase64 }),
     });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      console.error('Server non-JSON response:', text.slice(0, 300));
+      if (res.status === 413) {
+        throw new Error('Ukuran foto struk terlalu besar. Coba ambil foto lebih dekat atau kirim 1 foto.');
+      }
+      throw new Error(`Server mengembalikan status (${res.status}): Format tidak valid.`);
+    }
+
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || 'Gagal menganalisis foto struk');
     return json.data;
