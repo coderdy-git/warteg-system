@@ -108,27 +108,19 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}
   }> {
     const config = await this.settingsRepo.getSettings();
 
-    // Prioritaskan konfigurasi Vision khusus jika diatur, atau fallback ke config utama / OpenRouter / Gemini
-    let visionBaseUrl = config.visionBaseUrl || config.baseUrl;
-    let visionApiKey = config.visionApiKey || config.apiKey;
-    let visionModel = config.visionModel || (config.model.includes('deepseek') ? 'google/gemini-2.0-flash-exp:free' : config.model);
+    // 100% Menggunakan Konfigurasi DeepSeek yang sudah ada di Settings
+    const baseUrl = (config.baseUrl || 'https://api.deepseek.com').trim();
+    const apiKey = (config.apiKey || '').trim();
 
-    // Jika base URL bawaan DeepSeek (yang tidak punya vision), fallback ke OpenRouter atau Google Gemini kompatibel endpoint jika belum diset
-    if (visionBaseUrl.includes('api.deepseek.com') && !config.visionBaseUrl) {
-      // Default ke OpenRouter multi-modal free/low-cost atau user vision endpoint
-      visionBaseUrl = 'https://openrouter.ai/api/v1';
-      visionModel = 'google/gemini-2.0-flash-exp:free';
-    }
-
-    if (!visionApiKey) {
+    if (!apiKey) {
       throw new Error(
-        'API Key Vision AI belum dikonfigurasi. Silakan masukkan API Key di Pengaturan AI.'
+        'API Key DeepSeek belum tersimpan di database. Silakan simpan API Key di menu Pengaturan.'
       );
     }
 
     const openai = new OpenAI({
-      baseURL: visionBaseUrl.trim(),
-      apiKey: visionApiKey.trim(),
+      baseURL: baseUrl,
+      apiKey: apiKey,
     });
 
     // Pastikan format data URL base64 valid
@@ -137,10 +129,10 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}
       formattedImageUrl = `data:image/jpeg;base64,${imageBase64}`;
     }
 
-    const promptText = `Kamu adalah sistem OCR AI cerdas kasir warteg Indonesia.
-Tugasmu adalah menganalisis gambar foto struk belanja, bon pasar, nota pembelian bahan baku warteg, atau catatan pengeluaran tangan/ketik.
+    const promptText = `Kamu adalah sistem OCR AI kasir warteg Indonesia.
+Tugasmu adalah menganalisis gambar foto struk belanja, bon pasar, nota pembelian bahan baku warteg, atau catatan pengeluaran kasir.
 
-Ekstrak informasi berikut dan balas HANYA dalam format JSON valid murni (tanpa format markdown, tanpa petik tiga \`\`\`json, hanya raw JSON):
+Ekstrak informasi dan balas HANYA dalam format JSON valid murni (tanpa format markdown, tanpa petik tiga \`\`\`json, hanya raw JSON):
 {
   "totalAmount": <angka_nominal_total_belanja_tanpa_titik_atau_koma_integer>,
   "description": "<ringkasan_singkat_contoh_Belanja_Pasar_Bawang_Cabai_Telur>",
@@ -152,12 +144,15 @@ Ekstrak informasi berikut dan balas HANYA dalam format JSON valid murni (tanpa f
 }
 
 Aturan:
-1. Jika foto berupa bon pasar / struk belanja / kwitansi, targetkan total akhir yang harus dibayarkan.
+1. Targetkan total nominal rupiah akhir yang dibayarkan.
 2. Deskripsi harus ringkas dan jelas khas belanja warteg (contoh: "Belanja Pasar: Bumbu & Sayur", "Belanja Beras 50kg", "Belanja Gas Elpiji 3kg").
-3. Jika nominal tidak terlihat jelas, tebak perkiraan wajar berdasarkan item yang terbaca.`;
+3. Jika nominal tidak terlihat jelas, estimasikan secara wajar berdasarkan item yang terbaca.`;
+
+    // Gunakan model yang terdaftar di konfigurasi (default: deepseek-chat atau model deepseek aktif)
+    const targetModel = config.model || 'deepseek-chat';
 
     const response = await openai.chat.completions.create({
-      model: visionModel,
+      model: targetModel,
       messages: [
         {
           role: 'user',
@@ -176,7 +171,6 @@ Aturan:
     });
 
     const rawContent = response.choices[0]?.message?.content || '{}';
-    // Bersihkan dari backticks jika model menambahkan ```json ... ```
     const cleanedJson = rawContent
       .replace(/```json/gi, '')
       .replace(/```/g, '')
@@ -192,7 +186,7 @@ Aturan:
         items: Array.isArray(parsed.items) ? parsed.items : [],
       };
     } catch {
-      throw new Error('Gagal memproses struk: AI mengembalikan format tidak valid. Coba ulangi dengan foto yang lebih terang.');
+      throw new Error('Gagal memproses struk: Format respons tidak valid. Coba ulangi dengan foto yang lebih terang.');
     }
   }
 }
