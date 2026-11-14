@@ -250,7 +250,9 @@ export const api = {
     return json.data;
   },
 
-  async sendChatMessage(messages: { role: 'user' | 'assistant'; content: string }[]): Promise<string> {
+  async sendChatMessage(
+    messages: { role: 'user' | 'assistant'; content: string; imageBase64?: string }[]
+  ): Promise<string> {
     const res = await fetch(`${API_BASE}/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },

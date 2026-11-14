@@ -8,17 +8,22 @@ export class AIService {
   private dashboardRepo = new DashboardRepository();
   private transactionsRepo = new TransactionsRepository();
 
-  async chat(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]) {
+  async chat(
+    messages: { role: 'user' | 'assistant' | 'system'; content: string; imageBase64?: string }[]
+  ) {
     const config = await this.settingsRepo.getSettings();
-    if (!config.baseUrl || !config.apiKey || !config.model) {
+    if (!config.apiKey) {
       throw new Error(
-        'Asisten AI belum dikonfigurasi. Silakan atur Base URL, API Key, dan Model di menu Pengaturan.'
+        'Asisten AI belum dikonfigurasi. Silakan simpan API Key DeepSeek di menu Pengaturan.'
       );
     }
 
+    const baseUrl = (config.baseUrl || 'https://api.deepseek.com').trim();
+    const apiKey = config.apiKey.trim();
+
     const openai = new OpenAI({
-      baseURL: config.baseUrl.trim(),
-      apiKey: config.apiKey.trim(),
+      baseURL: baseUrl,
+      apiKey: apiKey,
     });
 
     const summary = await this.dashboardRepo.getSummary();
@@ -44,59 +49,75 @@ export class AIService {
       .join('\n');
 
     const systemPrompt = `[IDENTITAS & PERAN]
-Kamu adalah "Asisten AI WSystem", asisten keuangan internal khusus untuk dashboard warteg "WSystem".
-Tugas utamamu adalah mendampingi pemilik dan kasir warteg membaca kondisi kas, menganalisis laba/rugi, dan mengevaluasi transaksi warteg.
+Kamu adalah "Asisten AI WSystem", asisten keuangan internal khusus untuk warteg "WSystem".
+Tugasmu:
+1. Mendampingi kasir/owner menganalisis kondisi kas, laba bersih, dan pengeluaran belanja.
+2. Jika pengguna mengirimkan foto/gambar nota, bon pasar, kuitansi, atau catatan belanjaan (baik ketik maupun tulisan tangan):
+   - BACA DAN ANALISIS SEMUA ITEM & NOMINAL RUPIAH DI GAMBAR DENGAN TELITI.
+   - Cantumkan rincian item yang terbaca beserta harganya.
+   - Hitung dan nyatakan TOTAL BELANJA dengan jelas dalam format Rupiah (contoh: Rp 175.000).
+   - Buatkan ringkasan kategori (contoh: Belanja Pasar Sayur/Bumbu/Beras/Lauk).
 
 [STRUKTUR POSISI KAS WARTEG]
-Kas Warteg dibagi menjadi 2 pilar utama dengan masing-masing 2 sub-kantong:
-1. Posisi Kas Tunai:
-   - Kas di Toko (uang fisik di laci kasir harian)
-   - Kas Besar (brankas / simpanan cadangan kas besar)
-2. Posisi Kas QRIS (Digital):
-   - QRIS Dana (saldo akun Dana)
-   - QRIS GoPay (saldo akun GoPay)
-
-[DATA REALTIME FINANSIAL WARTEG SAAT INI]
-- TOTAL KAS KESELURUHAN: Rp ${summary.totalBalance.toLocaleString('id-ID')}
-- Total Kas Tunai: Rp ${summary.totalCash.toLocaleString('id-ID')}
+- Total Saldo Kas: Rp ${summary.totalBalance.toLocaleString('id-ID')}
   * Kas di Toko: Rp ${summary.cashToko.toLocaleString('id-ID')}
   * Kas Besar: Rp ${summary.cashBesar.toLocaleString('id-ID')}
-- Total Kas QRIS: Rp ${summary.totalQris.toLocaleString('id-ID')}
   * QRIS Dana: Rp ${summary.qrisDana.toLocaleString('id-ID')}
   * QRIS GoPay: Rp ${summary.qrisGopay.toLocaleString('id-ID')}
+- Pemasukan 7 Hari Terakhir: Rp ${summary.weeklyIncome.toLocaleString('id-ID')}
+- Pengeluaran 7 Hari Terakhir: Rp ${summary.weeklyExpense.toLocaleString('id-ID')}
 
-- Arus Masuk Minggu Ini (7 Hari Terakhir): Rp ${summary.weeklyIncome.toLocaleString('id-ID')}
-- Arus Keluar Minggu Ini (7 Hari Terakhir): Rp ${summary.weeklyExpense.toLocaleString('id-ID')}
-- Selisih Bersih Minggu Ini: Rp ${(summary.weeklyIncome - summary.weeklyExpense).toLocaleString('id-ID')}
+10 Transaksi Terakhir:
+${recentTrxText || 'Belum ada transaksi tercatat.'}`;
 
-10 Transaksi Terakhir yang Tercatat:
-${recentTrxText || 'Belum ada transaksi tercatat.'}
+    // Deteksi jika pesan mengandung gambar
+    const hasImage = messages.some((m) => Boolean(m.imageBase64));
+    // Jika ada gambar gunakan model multimodal deepseek-flash / model vision aktif
+    const targetModel = hasImage ? 'deepseek-flash' : config.model || 'deepseek-chat';
 
-[BATASAN LINGKUP & KEAMANAN (SANGAT KETAT)]
-1. LINGKUP EKSKLUSIF:
-   Kamu HANYA diizinkan menjawab dan berdiskusi seputar sistem WSystem dan keuangan warteg ini (Posisi kas di Toko, Kas Besar, QRIS Dana, QRIS GoPay, performa mingguan, mutasi transaksi).
-2. PENOLAKAN DI LUAR LINGKUP:
-   Tolak secara sopan pertanyaan di luar konteks warteg (seperti coding umum, politik, cerita fiksi, matematika acak):
-   "Maaf, saya adalah asisten khusus WSystem. Saya hanya dapat membantu terkait data keuangan, posisi kas (Toko, Kas Besar, Dana, GoPay), dan transaksi operasional warteg Anda."
-3. FORMAT JAWABAN:
-   - Jawab secara to-the-point dan ramah.
-   - Format nominal uang selalu Rupiah rapi (contoh: Rp 150.000).`;
-
-    const fullMessages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...messages,
+    const formattedMessages: any[] = [
+      { role: 'system', content: systemPrompt },
     ];
 
-    const response = await openai.chat.completions.create({
-      model: config.model,
-      messages: fullMessages,
-      temperature: 0.3,
-    });
+    for (const m of messages) {
+      if (m.imageBase64) {
+        let imgUrl = m.imageBase64;
+        if (!imgUrl.startsWith('data:image/')) {
+          imgUrl = `data:image/jpeg;base64,${imgUrl}`;
+        }
+        formattedMessages.push({
+          role: m.role,
+          content: [
+            { type: 'text', text: m.content || 'Tolong baca dan analisis struk/catatan belanja ini, rincikan item dan total rupiahnya:' },
+            { type: 'image_url', image_url: { url: imgUrl } },
+          ],
+        });
+      } else {
+        formattedMessages.push({
+          role: m.role,
+          content: m.content,
+        });
+      }
+    }
 
-    return (
-      response.choices[0]?.message?.content ||
-      'Maaf, saya tidak menerima respons dari model DeepSeek.'
-    );
+    try {
+      const response = await openai.chat.completions.create({
+        model: targetModel,
+        messages: formattedMessages,
+        temperature: 0.2,
+      });
+
+      return (
+        response.choices[0]?.message?.content ||
+        'Maaf, saya tidak menerima respons dari model DeepSeek.'
+      );
+    } catch (err: any) {
+      // Jika model deepseek-flash belum aktif di akun user, fallback mencoba model reguler
+      if (hasImage && err?.status === 404) {
+        throw new Error('Model DeepSeek Vision belum aktif pada akun API ini. Pastikan akun DeepSeek Anda memiliki kuota untuk vision.');
+      }
+      throw err;
+    }
   }
 
   async scanReceipt(imageBase64: string): Promise<{

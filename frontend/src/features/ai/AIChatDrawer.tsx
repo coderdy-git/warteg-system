@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../../lib/api';
-import { X, Send, Bot, User, Sparkles, AlertCircle, ArrowLeft } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, AlertCircle, ArrowLeft, Camera, Image as ImageIcon } from 'lucide-react';
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -13,6 +13,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  imageBase64?: string;
 }
 
 export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
@@ -25,12 +26,18 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
       id: '1',
       role: 'assistant',
       content:
-        'Halo! Saya Asisten AI Keuangan WSystem. Anda bisa tanyakan ringkasan kas, laba bersih, atau performa belanja warteg saat ini.',
+        'Halo! Saya Asisten AI Keuangan WSystem. Anda bisa tanyakan ringkasan kas, laba bersih, atau kirim foto nota/struk/catatan belanja pasar untuk saya hitungkan totalnya.',
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Upload Foto di Chat State
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [showImagePicker, setShowImagePicker] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -40,18 +47,32 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSend = async (textToSend?: string) => {
-    const text = textToSend || input;
-    if (!text.trim() || loading) return;
+  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
+  const handleSend = async (textToSend?: string) => {
+    const text = textToSend !== undefined ? textToSend : input;
+    if ((!text.trim() && !selectedImage) || loading) return;
+
+    const currentImg = selectedImage;
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: text,
+      content: text || 'Tolong baca dan rincikan total belanja pada foto ini:',
+      imageBase64: currentImg || undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
+    setSelectedImage(null);
     setErrorMsg(null);
     setLoading(true);
 
@@ -59,6 +80,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
       const history = [...messages, userMessage].map((m) => ({
         role: m.role,
         content: m.content,
+        imageBase64: m.imageBase64,
       }));
 
       const reply = await api.sendChatMessage(history);
@@ -149,6 +171,17 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
                       : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/70'
                   }`}
                 >
+                  {/* Foto yang dikirim pengguna jika ada */}
+                  {m.imageBase64 && (
+                    <div className="mb-2 max-w-[200px] rounded-xl overflow-hidden border border-white/20">
+                      <img
+                        src={m.imageBase64}
+                        alt="Foto Struk"
+                        className="w-full h-auto object-cover max-h-48"
+                      />
+                    </div>
+                  )}
+
                   {isUser ? (
                     m.content
                   ) : (
@@ -208,6 +241,79 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
           </div>
         </div>
 
+        {/* Preview Foto Sebelum Dikirim */}
+        {selectedImage && (
+          <div className="px-3.5 py-2 bg-slate-100 border-t border-slate-200 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <img
+                src={selectedImage}
+                alt="Selected"
+                className="w-10 h-10 object-cover rounded-lg border border-slate-300"
+              />
+              <span className="text-[11px] font-semibold text-slate-700">Foto siap dianalisis</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="p-1 rounded-md text-slate-400 hover:text-rose-600 text-xs"
+            >
+              ✕ Hapus
+            </button>
+          </div>
+        )}
+
+        {/* Action Sheet Pilihan Foto Kamera / Galeri */}
+        {showImagePicker && (
+          <div className="p-3 bg-orange-50/70 border-t border-orange-200/60 shrink-0 flex items-center justify-around gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowImagePicker(false);
+                cameraInputRef.current?.click();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-orange-200 text-slate-800 rounded-xl text-xs font-bold shadow-2xs hover:bg-orange-50 active:scale-95 transition-all"
+            >
+              <Camera className="w-3.5 h-3.5 text-orange-600" />
+              <span>Buka Kamera</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowImagePicker(false);
+                galleryInputRef.current?.click();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-orange-200 text-slate-800 rounded-xl text-xs font-bold shadow-2xs hover:bg-orange-50 active:scale-95 transition-all"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-slate-700" />
+              <span>Pilih Galeri</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowImagePicker(false)}
+              className="text-xs text-slate-400 hover:text-slate-600 px-2"
+            >
+              Batal
+            </button>
+          </div>
+        )}
+
+        {/* Input File Kamera & Galeri Tersembunyi */}
+        <input
+          type="file"
+          ref={cameraInputRef}
+          onChange={handleImageFile}
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+        />
+        <input
+          type="file"
+          ref={galleryInputRef}
+          onChange={handleImageFile}
+          accept="image/*"
+          className="hidden"
+        />
+
         {/* Form Input Pesan */}
         <div className="p-3 border-t border-slate-100 bg-white shrink-0 safe-bottom">
           <form
@@ -217,17 +323,27 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
             }}
             className="flex items-center gap-2"
           >
+            {/* Tombol Kamera di Form Chat */}
+            <button
+              type="button"
+              onClick={() => setShowImagePicker(!showImagePicker)}
+              className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-orange-600 hover:border-orange-300 hover:bg-orange-50 transition-colors shrink-0 shadow-2xs active:scale-95"
+              title="Kirim Foto Struk/Catatan Belanja"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Tanyakan analisis kas warteg..."
+              placeholder={selectedImage ? 'Tulis catatan tambahan (opsional)...' : 'Tanyakan kas atau kirim foto nota...'}
               className="flex-1 px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-orange-500 bg-slate-50/50 focus:bg-white transition-colors"
               disabled={loading}
             />
             <button
               type="submit"
-              disabled={loading || !input.trim()}
+              disabled={loading || (!input.trim() && !selectedImage)}
               className="p-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50 transition-colors shrink-0 shadow-2xs active:scale-95"
             >
               <Send className="w-4 h-4" />
