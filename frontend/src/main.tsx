@@ -11,3 +11,17 @@ createRoot(document.getElementById('root')!).render(
     </NotificationProvider>
   </StrictMode>,
 )
+
+// Registrasi PWA Service Worker untuk performa offline & installable app
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        console.log('[PWA] Service Worker terdaftar:', reg.scope);
+      })
+      .catch((err) => {
+        console.error('[PWA] Gagal mendaftarkan Service Worker:', err);
+      });
+  });
+}
