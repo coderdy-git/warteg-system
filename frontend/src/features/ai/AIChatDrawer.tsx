@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../../lib/api';
+import { useNotification } from '../../components/ui/NotificationProvider';
 import { X, Send, Bot, User, Sparkles, AlertCircle, ArrowLeft, Camera, Image as ImageIcon, PlusCircle } from 'lucide-react';
 
 interface AIChatDrawerProps {
@@ -33,6 +34,8 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   onOpenSettings,
   onTransactionUpdated,
 }) => {
+  const { confirm, showToast } = useNotification();
+
   // Simpan & ambil history chat dari localStorage agar riwayat tidak hilang saat ditutup/refresh
   const [messages, setMessages] = useState<Message[]>(() => {
     try {
@@ -82,24 +85,32 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Fungsi Mulai Chat Baru
+  // Fungsi Mulai Chat Baru dengan Modal Konfirmasi Cantik
   const handleNewChat = () => {
     if (loading) return;
-    const confirmed = window.confirm('Mulai sesi percakapan baru? Riwayat chat sebelumnya akan dibersihkan.');
-    if (confirmed) {
-      const newMessages = [
-        {
-          id: Date.now().toString(),
-          role: 'assistant' as const,
-          content: 'Percakapan baru dimulai. Ada yang bisa saya bantu terkait keuangan atau belanja warteg hari ini?',
-        },
-      ];
-      setMessages(newMessages);
-      setSelectedImages([]);
-      setInput('');
-      setErrorMsg(null);
-      localStorage.removeItem(STORAGE_KEY);
-    }
+
+    confirm({
+      title: 'Mulai Chat Baru?',
+      message: 'Riwayat percakapan sebelumnya akan dibersihkan dan Anda dapat memulai sesi konsultasi baru.',
+      confirmLabel: 'Ya, Chat Baru',
+      cancelLabel: 'Batal',
+      isDanger: false,
+      onConfirm: () => {
+        const newMessages = [
+          {
+            id: Date.now().toString(),
+            role: 'assistant' as const,
+            content: 'Percakapan baru dimulai. Ada yang bisa saya bantu terkait keuangan atau belanja warteg hari ini?',
+          },
+        ];
+        setMessages(newMessages);
+        setSelectedImages([]);
+        setInput('');
+        setErrorMsg(null);
+        localStorage.removeItem(STORAGE_KEY);
+        showToast('info', 'Chat Baru', 'Sesi percakapan baru telah dimulai.');
+      },
+    });
   };
 
   if (!isOpen) return null;
