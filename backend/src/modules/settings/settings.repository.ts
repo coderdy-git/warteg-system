@@ -31,7 +31,7 @@ export class SettingsRepository {
     return {
       baseUrl: map.get('ai_base_url') || 'https://api.deepseek.com',
       apiKey: map.get('ai_api_key') || '',
-      model: map.get('ai_model') || 'deepseek-chat',
+      model: map.get('ai_model') || 'deepseek-4-pro',
       visionBaseUrl: map.get('ai_vision_base_url') || '',
       visionApiKey: map.get('ai_vision_api_key') || '',
       visionModel: map.get('ai_vision_model') || '',

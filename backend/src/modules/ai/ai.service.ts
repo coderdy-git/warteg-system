@@ -103,8 +103,8 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}`;
 
     // Deteksi jika pesan mengandung gambar (single atau multi-image)
     const hasImage = messages.some((m) => Boolean(m.imageBase64 || (m.images && m.images.length > 0)));
-    // Jika ada gambar gunakan model multimodal deepseek-flash / model vision aktif
-    const targetModel = hasImage ? 'deepseek-flash' : config.model || 'deepseek-chat';
+    // Jika ada gambar gunakan model multimodal vision deepseek-flash, jika teks murni gunakan model konfigurasi (default: deepseek-4-pro)
+    const targetModel = hasImage ? 'deepseek-flash' : config.model || 'deepseek-4-pro';
 
     const formattedMessages: any[] = [
       { role: 'system', content: systemPrompt },

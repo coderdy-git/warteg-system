@@ -15,6 +15,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
   const [apiKey, setApiKey] = useState('');
   const [maskedKey, setMaskedKey] = useState('');
   const [hasSavedKey, setHasSavedKey] = useState(false);
+  const [model, setModel] = useState('deepseek-4-pro');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -33,6 +34,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
       const data = await api.getAISettings();
       setMaskedKey(data.maskedApiKey || '');
       setHasSavedKey(data.hasApiKey);
+      if (data.model) {
+        setModel(data.model);
+      }
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -52,11 +56,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
       await api.saveAISettings({
         baseUrl: 'https://api.deepseek.com',
         apiKey: apiKey.trim(),
-        model: 'deepseek-chat',
+        model: model.trim() || 'deepseek-4-pro',
       });
       setApiKey('');
       await loadSettings();
-      showToast('success', 'Pengaturan Tersimpan', 'API Key DeepSeek berhasil disimpan.');
+      showToast('success', 'Pengaturan Tersimpan', 'Konfigurasi DeepSeek (deepseek-4-pro) berhasil disimpan.');
     } catch (err: any) {
       showToast('error', 'Gagal Menyimpan', err.message || 'Terjadi kesalahan sistem.');
     } finally {
@@ -142,23 +146,29 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
           />
         </div>
 
-        {/* Pilih Model (Locked ke deepseek-chat) */}
+        {/* Pilih Model LLM */}
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-slate-400" />
               Model LLM DeepSeek
             </span>
-            <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-              Terkunci (Default)
+            <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+              Direkomendasikan: deepseek-4-pro
             </span>
           </label>
-          <input
-            type="text"
-            value="deepseek-chat"
-            disabled
-            className="w-full px-3.5 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 text-xs font-mono cursor-not-allowed select-none"
-          />
+          <div className="relative">
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="deepseek-4-pro"
+              className="w-full px-3.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-hidden focus:border-orange-500 font-mono"
+            />
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Model default percakapan & penalaran kas warteg. Untuk analisis foto struk/catatan belanja, sistem otomatis menggunakan multimodal vision high-speed.
+          </p>
         </div>
 
         <div className="pt-2 border-t border-slate-100 flex justify-end">
