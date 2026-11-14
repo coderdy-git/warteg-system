@@ -50,18 +50,32 @@ export class AIService {
 
     const systemPrompt = `[IDENTITAS & PERAN]
 Kamu adalah "Asisten AI WSystem", asisten keuangan internal khusus untuk warteg "WSystem".
-Tugasmu:
-1. Mendampingi kasir/owner menganalisis kondisi kas, laba bersih, dan pengeluaran belanja.
-2. Jika pengguna mengirimkan foto/gambar nota, bon pasar, kuitansi, atau catatan belanjaan (baik ketik maupun tulisan tangan):
-   - BACA DAN ANALISIS SEMUA ITEM & NOMINAL RUPIAH DI GAMBAR DENGAN TELITI.
-   - Cantumkan rincian item yang terbaca beserta harganya.
-   - Hitung dan nyatakan TOTAL BELANJA dengan jelas dalam format Rupiah (contoh: Rp 175.000).
-   - Buatkan ringkasan kategori (contoh: Belanja Pasar Sayur/Bumbu/Beras/Lauk).
+Jawablah secara singkat, padat, ramah, dan to-the-point khas operasional warteg.
 
-[STRUKTUR POSISI KAS WARTEG]
+[PANDUAN MENJAWAB & DATA - SANGAT PENTING]
+1. HANYA JAWAB APA YANG DITANYAKAN:
+   - JANGAN PERNAH mengeluarkan laporan mingguan, rincian 7 hari terakhir, atau rekap saldo kas jika pengguna TIDAK MEMINTANYA secara eksplisit!
+   - Contoh: Jika pengguna menyapa "Halo", cukup jawab salam singkat dan tawarkan bantuan. JANGAN lampirkan tabel saldo atau ringkasan 7 hari.
+   - Contoh: Jika pengguna bertanya saldo kas toko, HANYA sebutkan saldo kas toko. Jangan sebutkan saldo pos lain kecuali diminta.
+
+2. KEMAMPUAN MENCATAT TRANSAKSI OTOMATIS:
+   - Jika pengguna bermaksud mencatat transaksi (contoh: "catat belanja cabai 30.000 dari kas toko", "masukkan pemasukan 200rb ke qris dana", atau konfirmasi foto nota belanja):
+   - Kamu WAJIB menyertakan blok JSON khusus di AKHIR jawabanmu dengan format berikut:
+   <<<TRANSACTION_RECORD>>>
+   {
+     "type": "expense" | "income",
+     "amount": <angka_nominal_rupiah_integer>,
+     "method": "tunai_toko" | "tunai_kas_besar" | "qris_dana" | "qris_gopay",
+     "description": "<keterangan_singkat>",
+     "date": "YYYY-MM-DD"
+   }
+   <<<END_TRANSACTION_RECORD>>>
+   - Sistem backend akan membaca blok ini dan langsung menyimpannya ke database warteg!
+
+[DATA KEUANGAN UNTUK REFERENSI INTERNAL KAMU]
 - Total Saldo Kas: Rp ${summary.totalBalance.toLocaleString('id-ID')}
-  * Kas di Toko: Rp ${summary.cashToko.toLocaleString('id-ID')}
-  * Kas Besar: Rp ${summary.cashBesar.toLocaleString('id-ID')}
+  * Kas di Toko (Laci): Rp ${summary.cashToko.toLocaleString('id-ID')}
+  * Kas Besar (Brankas): Rp ${summary.cashBesar.toLocaleString('id-ID')}
   * QRIS Dana: Rp ${summary.qrisDana.toLocaleString('id-ID')}
   * QRIS GoPay: Rp ${summary.qrisGopay.toLocaleString('id-ID')}
 - Pemasukan 7 Hari Terakhir: Rp ${summary.weeklyIncome.toLocaleString('id-ID')}
@@ -107,10 +121,39 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}`;
         temperature: 0.2,
       });
 
-      return (
-        response.choices[0]?.message?.content ||
-        'Maaf, saya tidak menerima respons dari model DeepSeek.'
-      );
+      let rawResponse = response.choices[0]?.message?.content || '';
+
+      // Cek apakah ada instruksi pencatatan transaksi otomatis (<<<TRANSACTION_RECORD>>>)
+      const recordMatch = rawResponse.match(/<<<TRANSACTION_RECORD>>>([\s\S]*?)<<<END_TRANSACTION_RECORD>>>/);
+      let executedTransaction = false;
+
+      if (recordMatch && recordMatch[1]) {
+        try {
+          const parsed = JSON.parse(recordMatch[1].trim());
+          if (parsed.amount && parsed.description) {
+            await this.transactionsRepo.create({
+              type: parsed.type === 'income' ? 'income' : 'expense',
+              amount: Math.abs(parseInt(parsed.amount, 10)),
+              method: ['tunai_toko', 'tunai_kas_besar', 'qris_dana', 'qris_gopay'].includes(parsed.method)
+                ? parsed.method
+                : 'tunai_toko',
+              description: parsed.description,
+              date: parsed.date || new Date().toISOString().slice(0, 10),
+            });
+            executedTransaction = true;
+          }
+        } catch (e) {
+          console.error('Gagal parse blok transaksi AI:', e);
+        }
+
+        // Bersihkan blok kode JSON teknis dari balasan chat agar tidak terlihat pengguna
+        rawResponse = rawResponse.replace(/<<<TRANSACTION_RECORD>>>[\s\S]*?<<<END_TRANSACTION_RECORD>>>/g, '').trim();
+        if (executedTransaction) {
+          rawResponse += '\n\n*(✅ Berhasil dicatat langsung ke pembukuan kas warteg!)*';
+        }
+      }
+
+      return rawResponse || 'Maaf, saya tidak menerima respons dari model DeepSeek.';
     } catch (err: any) {
       // Jika model deepseek-flash belum aktif di akun user, fallback mencoba model reguler
       if (hasImage && err?.status === 404) {

@@ -735,6 +735,7 @@ export function App() {
           setIsAIChatOpen(false);
           setActiveTab('settings');
         }}
+        onTransactionUpdated={() => fetchData(false)}
       />
     </div>
   );

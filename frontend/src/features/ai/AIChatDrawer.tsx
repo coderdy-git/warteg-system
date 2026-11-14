@@ -7,6 +7,7 @@ interface AIChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenSettings: () => void;
+  onTransactionUpdated?: () => void;
 }
 
 interface Message {
@@ -20,6 +21,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   isOpen,
   onClose,
   onOpenSettings,
+  onTransactionUpdated,
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -50,9 +52,40 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Kompresi otomatis di sisi client agar kirim gambar instan & tidak lama
+    const img = new Image();
     const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedImage(reader.result as string);
+
+    reader.onload = (event) => {
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 1000;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_DIM) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          }
+        } else {
+          if (height > MAX_DIM) {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        // Kompresi ke JPEG kualitas 0.7 (ukuran berkurang ~90% jadi ~150KB)
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        setSelectedImage(compressedBase64);
+      };
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -88,6 +121,11 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         ...prev,
         { id: (Date.now() + 1).toString(), role: 'assistant', content: reply },
       ]);
+
+      // Jika ada pencatatan transaksi yang berhasil, trigger refresh data utama
+      if (reply.includes('Berhasil dicatat langsung ke pembukuan kas warteg')) {
+        onTransactionUpdated?.();
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal berkomunikasi dengan AI.');
     } finally {
