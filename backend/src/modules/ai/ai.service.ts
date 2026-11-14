@@ -9,7 +9,12 @@ export class AIService {
   private transactionsRepo = new TransactionsRepository();
 
   async chat(
-    messages: { role: 'user' | 'assistant' | 'system'; content: string; imageBase64?: string }[]
+    messages: {
+      role: 'user' | 'assistant' | 'system';
+      content: string;
+      imageBase64?: string;
+      images?: string[];
+    }[]
   ) {
     const config = await this.settingsRepo.getSettings();
     if (!config.apiKey) {
@@ -84,8 +89,8 @@ Jawablah secara singkat, padat, ramah, dan to-the-point khas operasional warteg.
 10 Transaksi Terakhir:
 ${recentTrxText || 'Belum ada transaksi tercatat.'}`;
 
-    // Deteksi jika pesan mengandung gambar
-    const hasImage = messages.some((m) => Boolean(m.imageBase64));
+    // Deteksi jika pesan mengandung gambar (single atau multi-image)
+    const hasImage = messages.some((m) => Boolean(m.imageBase64 || (m.images && m.images.length > 0)));
     // Jika ada gambar gunakan model multimodal deepseek-flash / model vision aktif
     const targetModel = hasImage ? 'deepseek-flash' : config.model || 'deepseek-chat';
 
@@ -94,17 +99,39 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}`;
     ];
 
     for (const m of messages) {
-      if (m.imageBase64) {
-        let imgUrl = m.imageBase64;
-        if (!imgUrl.startsWith('data:image/')) {
-          imgUrl = `data:image/jpeg;base64,${imgUrl}`;
+      const allImages: string[] = [];
+      if (Array.isArray(m.images) && m.images.length > 0) {
+        allImages.push(...m.images);
+      } else if (m.imageBase64) {
+        allImages.push(m.imageBase64);
+      }
+
+      if (allImages.length > 0) {
+        const contentParts: any[] = [
+          {
+            type: 'text',
+            text:
+              m.content ||
+              (allImages.length > 1
+                ? 'Tolong baca dan gabungkan analisis semua foto struk/catatan belanja ini, hitung total keseluruhan pengeluaran belanja:'
+                : 'Tolong baca dan analisis struk/catatan belanja ini, rincikan item dan total rupiahnya:'),
+          },
+        ];
+
+        for (const rawImg of allImages) {
+          let imgUrl = rawImg;
+          if (!imgUrl.startsWith('data:image/')) {
+            imgUrl = `data:image/jpeg;base64,${imgUrl}`;
+          }
+          contentParts.push({
+            type: 'image_url',
+            image_url: { url: imgUrl },
+          });
         }
+
         formattedMessages.push({
           role: m.role,
-          content: [
-            { type: 'text', text: m.content || 'Tolong baca dan analisis struk/catatan belanja ini, rincikan item dan total rupiahnya:' },
-            { type: 'image_url', image_url: { url: imgUrl } },
-          ],
+          content: contentParts,
         });
       } else {
         formattedMessages.push({

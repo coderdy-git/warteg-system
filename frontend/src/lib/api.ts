@@ -251,7 +251,7 @@ export const api = {
   },
 
   async sendChatMessage(
-    messages: { role: 'user' | 'assistant'; content: string; imageBase64?: string }[]
+    messages: { role: 'user' | 'assistant'; content: string; imageBase64?: string; images?: string[] }[]
   ): Promise<string> {
     const res = await fetch(`${API_BASE}/ai/chat`, {
       method: 'POST',

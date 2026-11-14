@@ -15,6 +15,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   imageBase64?: string;
+  images?: string[];
 }
 
 export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
@@ -35,8 +36,8 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Upload Foto di Chat State
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  // Upload Foto di Chat State (Mendukung Multi-Foto)
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
@@ -49,63 +50,85 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Fungsi kompres gambar ke base64 ringan
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_DIM = 1000;
+          let width = img.width;
+          let height = img.height;
 
-    // Kompresi otomatis di sisi client agar kirim gambar instan & tidak lama
-    const img = new Image();
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_DIM = 1000;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_DIM) {
-            height = Math.round((height * MAX_DIM) / width);
-            width = MAX_DIM;
+          if (width > height) {
+            if (width > MAX_DIM) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            }
+          } else {
+            if (height > MAX_DIM) {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
           }
-        } else {
-          if (height > MAX_DIM) {
-            width = Math.round((width * MAX_DIM) / height);
-            height = MAX_DIM;
-          }
-        }
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
 
-        // Kompresi ke JPEG kualitas 0.7 (ukuran berkurang ~90% jadi ~150KB)
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
-        setSelectedImage(compressedBase64);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
       };
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const compressedList: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file);
+        compressedList.push(compressed);
+      }
+    }
+
+    if (compressedList.length > 0) {
+      setSelectedImages((prev) => [...prev, ...compressedList]);
+    }
     e.target.value = '';
+  };
+
+  const removeSelectedImage = (index: number) => {
+    setSelectedImages((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const handleSend = async (textToSend?: string) => {
     const text = textToSend !== undefined ? textToSend : input;
-    if ((!text.trim() && !selectedImage) || loading) return;
+    if ((!text.trim() && selectedImages.length === 0) || loading) return;
 
-    const currentImg = selectedImage;
+    const currentImages = [...selectedImages];
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: text || 'Tolong baca dan rincikan total belanja pada foto ini:',
-      imageBase64: currentImg || undefined,
+      content:
+        text ||
+        (currentImages.length > 1
+          ? 'Tolong baca dan gabungkan hitungan total belanja dari foto-foto struk ini:'
+          : 'Tolong baca dan rincikan total belanja pada foto ini:'),
+      images: currentImages.length > 0 ? currentImages : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
-    setSelectedImage(null);
+    setSelectedImages([]);
     setErrorMsg(null);
     setLoading(true);
 
@@ -113,6 +136,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
       const history = [...messages, userMessage].map((m) => ({
         role: m.role,
         content: m.content,
+        images: m.images,
         imageBase64: m.imageBase64,
       }));
 
@@ -209,8 +233,23 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
                       : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/70'
                   }`}
                 >
-                  {/* Foto yang dikirim pengguna jika ada */}
-                  {m.imageBase64 && (
+                  {/* Tampilan Multi-Foto jika ada */}
+                  {m.images && m.images.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5 max-w-[280px]">
+                      {m.images.map((img, idx) => (
+                        <div key={idx} className="w-20 h-20 rounded-lg overflow-hidden border border-white/20 shrink-0">
+                          <img
+                            src={img}
+                            alt={`Foto Struk ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Foto tunggal legacy fallback */}
+                  {!m.images && m.imageBase64 && (
                     <div className="mb-2 max-w-[200px] rounded-xl overflow-hidden border border-white/20">
                       <img
                         src={m.imageBase64}
@@ -279,23 +318,38 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
           </div>
         </div>
 
-        {/* Preview Foto Sebelum Dikirim */}
-        {selectedImage && (
+        {/* Preview Multi-Foto Sebelum Dikirim */}
+        {selectedImages.length > 0 && (
           <div className="px-3.5 py-2 bg-slate-100 border-t border-slate-200 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2">
-              <img
-                src={selectedImage}
-                alt="Selected"
-                className="w-10 h-10 object-cover rounded-lg border border-slate-300"
-              />
-              <span className="text-[11px] font-semibold text-slate-700">Foto siap dianalisis</span>
+            <div className="flex items-center gap-2 overflow-x-auto py-1">
+              {selectedImages.map((img, idx) => (
+                <div key={idx} className="relative group shrink-0">
+                  <img
+                    src={img}
+                    alt={`Selected ${idx + 1}`}
+                    className="w-12 h-12 object-cover rounded-lg border border-slate-300 shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeSelectedImage(idx)}
+                    className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shadow-xs hover:bg-rose-700"
+                    title="Hapus foto ini"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap pl-1">
+                {selectedImages.length} Foto Siap Digabung
+              </span>
             </div>
+
             <button
               type="button"
-              onClick={() => setSelectedImage(null)}
-              className="p-1 rounded-md text-slate-400 hover:text-rose-600 text-xs"
+              onClick={() => setSelectedImages([])}
+              className="p-1 rounded-md text-slate-400 hover:text-rose-600 text-xs shrink-0 whitespace-nowrap pl-2"
             >
-              ✕ Hapus
+              Hapus Semua
             </button>
           </div>
         )}
@@ -323,7 +377,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-orange-200 text-slate-800 rounded-xl text-xs font-bold shadow-2xs hover:bg-orange-50 active:scale-95 transition-all"
             >
               <ImageIcon className="w-3.5 h-3.5 text-slate-700" />
-              <span>Pilih Galeri</span>
+              <span>Pilih Galeri (Multi)</span>
             </button>
             <button
               type="button"
@@ -335,11 +389,11 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
           </div>
         )}
 
-        {/* Input File Kamera & Galeri Tersembunyi */}
+        {/* Input File Kamera (Single) & Galeri (Multiple) */}
         <input
           type="file"
           ref={cameraInputRef}
-          onChange={handleImageFile}
+          onChange={handleImageFiles}
           accept="image/*"
           capture="environment"
           className="hidden"
@@ -347,8 +401,9 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         <input
           type="file"
           ref={galleryInputRef}
-          onChange={handleImageFile}
+          onChange={handleImageFiles}
           accept="image/*"
+          multiple
           className="hidden"
         />
 
@@ -375,13 +430,17 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={selectedImage ? 'Tulis catatan tambahan (opsional)...' : 'Tanyakan kas atau kirim foto nota...'}
+              placeholder={
+                selectedImages.length > 0
+                  ? `Gabungkan ${selectedImages.length} foto belanja (opsional catatan)...`
+                  : 'Tanyakan kas atau kirim foto nota...'
+              }
               className="flex-1 px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:border-orange-500 bg-slate-50/50 focus:bg-white transition-colors"
               disabled={loading}
             />
             <button
               type="submit"
-              disabled={loading || (!input.trim() && !selectedImage)}
+              disabled={loading || (!input.trim() && selectedImages.length === 0)}
               className="p-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50 transition-colors shrink-0 shadow-2xs active:scale-95"
             >
               <Send className="w-4 h-4" />
