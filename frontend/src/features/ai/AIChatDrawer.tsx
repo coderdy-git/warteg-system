@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../../lib/api';
-import { X, Send, Bot, User, Sparkles, AlertCircle, ArrowLeft, Camera, Image as ImageIcon } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, AlertCircle, ArrowLeft, Camera, Image as ImageIcon, PlusCircle } from 'lucide-react';
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -18,20 +18,37 @@ interface Message {
   images?: string[];
 }
 
+const STORAGE_KEY = 'wsystem_ai_chat_history';
+
+const DEFAULT_WELCOME_MESSAGE: Message = {
+  id: '1',
+  role: 'assistant',
+  content:
+    'Halo! Saya Asisten AI Keuangan WSystem. Anda bisa tanyakan ringkasan kas, laba bersih, atau kirim foto nota/struk/catatan belanja pasar untuk saya hitungkan totalnya.',
+};
+
 export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   isOpen,
   onClose,
   onOpenSettings,
   onTransactionUpdated,
 }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content:
-        'Halo! Saya Asisten AI Keuangan WSystem. Anda bisa tanyakan ringkasan kas, laba bersih, atau kirim foto nota/struk/catatan belanja pasar untuk saya hitungkan totalnya.',
-    },
-  ]);
+  // Simpan & ambil history chat dari localStorage agar riwayat tidak hilang saat ditutup/refresh
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // Fallback ke pesan sambutan default jika parse gagal
+    }
+    return [DEFAULT_WELCOME_MESSAGE];
+  });
+
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -44,9 +61,46 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Simpan history setiap kali messages berubah
   useEffect(() => {
+    try {
+      // Hilangkan data foto base64 yang besar saat menyimpan riwayat ke localStorage agar tidak melebihi kuota 5MB browser
+      const sanitized = messages.map((m) => {
+        if (m.images || m.imageBase64) {
+          return {
+            ...m,
+            images: m.images ? m.images.map((_, i) => `[Foto Struk ${i + 1}]`) : undefined,
+            imageBase64: undefined,
+          };
+        }
+        return m;
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+    } catch (e) {
+      console.warn('Gagal menyimpan riwayat chat ke localStorage:', e);
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Fungsi Mulai Chat Baru
+  const handleNewChat = () => {
+    if (loading) return;
+    const confirmed = window.confirm('Mulai sesi percakapan baru? Riwayat chat sebelumnya akan dibersihkan.');
+    if (confirmed) {
+      const newMessages = [
+        {
+          id: Date.now().toString(),
+          role: 'assistant' as const,
+          content: 'Percakapan baru dimulai. Ada yang bisa saya bantu terkait keuangan atau belanja warteg hari ini?',
+        },
+      ];
+      setMessages(newMessages);
+      setSelectedImages([]);
+      setInput('');
+      setErrorMsg(null);
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -201,7 +255,17 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            {/* Tombol Chat Baru */}
+            <button
+              onClick={handleNewChat}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:text-orange-600 hover:border-orange-300 hover:bg-orange-50 text-xs font-semibold shadow-2xs transition-all active:scale-95"
+              title="Mulai Sesi Chat Baru"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-orange-600" />
+              <span className="text-[11px]">Chat Baru</span>
+            </button>
+
             {/* Tombol Tutup Silang di Desktop */}
             <button
               onClick={onClose}
