@@ -13,11 +13,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
 
   // AI Settings State (Kunci mati ke DeepSeek)
   const [apiKey, setApiKey] = useState('');
-  const [maskedKey, setMaskedKey] = useState('');
   const [hasSavedKey, setHasSavedKey] = useState(false);
   const [model, setModel] = useState('deepseek-4-pro');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   // Change Password State
   const [oldPassword, setOldPassword] = useState('');
@@ -30,41 +27,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
 
   const loadSettings = async () => {
     try {
-      setLoading(true);
       const data = await api.getAISettings();
-      setMaskedKey(data.maskedApiKey || '');
       setHasSavedKey(data.hasApiKey);
+      if (data.apiKey) {
+        setApiKey(data.apiKey);
+      } else if (data.maskedApiKey) {
+        setApiKey(data.maskedApiKey);
+      }
       if (data.model) {
         setModel(data.model);
       }
     } catch (err: any) {
       console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveAI = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiKey && !hasSavedKey) {
-      showToast('error', 'Validasi Gagal', 'API Key DeepSeek harus terisi.');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      await api.saveAISettings({
-        baseUrl: 'https://api.deepseek.com',
-        apiKey: apiKey.trim(),
-        model: model.trim() || 'deepseek-4-pro',
-      });
-      setApiKey('');
-      await loadSettings();
-      showToast('success', 'Pengaturan Tersimpan', 'Konfigurasi DeepSeek (deepseek-4-pro) berhasil disimpan.');
-    } catch (err: any) {
-      showToast('error', 'Gagal Menyimpan', err.message || 'Terjadi kesalahan sistem.');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -95,10 +69,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
       </div>
 
       {/* SECTION 1: PENGATURAN AI */}
-      <form onSubmit={handleSaveAI} className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-2xs space-y-5">
+      <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-2xs space-y-5">
         <div className="border-b border-slate-100 pb-3">
           <h3 className="text-sm font-bold text-slate-900 font-jakarta">Konfigurasi Asisten AI (DeepSeek)</h3>
-          <p className="text-[11px] text-slate-400">API Key dienkripsi & di-masking di sisi server demi keamanan produksi.</p>
+          <p className="text-[11px] text-slate-400">Konfigurasi AI telah dikunci secara otomatis ke server DeepSeek.</p>
         </div>
 
         {/* Base URL (Locked & Readonly ke DeepSeek) */}
@@ -120,7 +94,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
           />
         </div>
 
-        {/* API Key */}
+        {/* API Key (Tersimpan & Terkunci) */}
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
@@ -129,58 +103,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUse
             </span>
             {hasSavedKey && (
               <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded">
-                <ShieldCheck className="w-3 h-3" /> Tersimpan ({maskedKey})
+                <ShieldCheck className="w-3 h-3" /> Tersimpan
               </span>
             )}
           </label>
           <input
-            type="password"
+            type="text"
             value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={
-              hasSavedKey
-                ? 'Kosongkan jika tidak ingin mengubah API Key yang tersimpan'
-                : 'Masukkan API Key DeepSeek (sk-...)'
-            }
-            className="w-full px-3.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-hidden focus:border-orange-500 font-mono"
+            disabled
+            className="w-full px-3.5 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-xs font-mono cursor-not-allowed select-none"
           />
         </div>
 
-        {/* Pilih Model LLM */}
+        {/* Pilih Model (Tersimpan & Terkunci) */}
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-slate-400" />
               Model LLM DeepSeek
             </span>
-            <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-              Direkomendasikan: deepseek-4-pro
+            <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+              Terkunci (Default)
             </span>
           </label>
-          <div className="relative">
-            <input
-              type="text"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="deepseek-4-pro"
-              className="w-full px-3.5 py-2 rounded-lg border border-slate-200 text-xs focus:outline-hidden focus:border-orange-500 font-mono"
-            />
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Model default percakapan & penalaran kas warteg. Untuk analisis foto struk/catatan belanja, sistem otomatis menggunakan multimodal vision high-speed.
-          </p>
+          <input
+            type="text"
+            value={model || 'deepseek-4-pro'}
+            disabled
+            className="w-full px-3.5 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-xs font-mono cursor-not-allowed select-none"
+          />
         </div>
-
-        <div className="pt-2 border-t border-slate-100 flex justify-end">
-          <button
-            type="submit"
-            disabled={saving || loading}
-            className="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold shadow-2xs disabled:opacity-50 transition-colors"
-          >
-            {saving ? 'Menyimpan...' : 'Simpan Pengaturan AI'}
-          </button>
-        </div>
-      </form>
+      </div>
 
       {/* SECTION 2: GANTI PASSWORD AKUN */}
       <form onSubmit={handleChangePassword} className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-2xs space-y-4">

@@ -6,7 +6,7 @@ export function createSettingsRouter(): Router {
   const router = Router();
   const repo = new SettingsRepository();
 
-  // Ambil pengaturan saat ini (API Key dimasking agar aman)
+  // Ambil pengaturan saat ini (Kirim raw/masked API key untuk tampilan input)
   router.get('/ai', async (_req: Request, res: Response) => {
     try {
       const settings = await repo.getSettings();
@@ -20,10 +20,10 @@ export function createSettingsRouter(): Router {
         success: true,
         data: {
           baseUrl: settings.baseUrl,
-          apiKey: '', // Jangan pernah kirim raw API key ke frontend
+          apiKey: settings.apiKey || '', // Mengembalikan API key agar bisa tampil di input
           maskedApiKey: maskedKey,
           hasApiKey: Boolean(settings.apiKey),
-          model: settings.model,
+          model: settings.model || 'deepseek-4-pro',
           isConfigured: Boolean(settings.baseUrl && settings.apiKey && settings.model),
           visionBaseUrl: settings.visionBaseUrl || '',
           visionModel: settings.visionModel || '',
