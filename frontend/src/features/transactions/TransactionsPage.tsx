@@ -292,7 +292,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
                 <th className="py-3 px-5 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 hidden md:table-row-group">
               {paginatedList.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-slate-400">
@@ -369,6 +369,104 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
               )}
             </tbody>
           </table>
+
+          {/* Mobile Feed View (Tampilan Khusus Smartphone Ala Mobile Banking) */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {paginatedList.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-xs">
+                Tidak ada transaksi yang sesuai filter.
+              </div>
+            ) : (
+              paginatedList.map((trx) => {
+                const isPositive = trx.type === 'income' || trx.type === 'transfer_in';
+                const isTransfer = trx.type === 'transfer_in' || trx.type === 'transfer_out';
+                const methodMeta = METHOD_LABELS[trx.method] || {
+                  name: trx.method,
+                  tag: trx.method,
+                  badge: 'bg-slate-100 text-slate-700',
+                };
+
+                return (
+                  <div key={trx.id} className="p-3.5 flex items-center justify-between gap-3 active:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          isTransfer
+                            ? 'bg-blue-50 text-blue-600'
+                            : isPositive
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : 'bg-rose-50 text-rose-600'
+                        }`}
+                      >
+                        <FontAwesomeIcon
+                          icon={
+                            isTransfer
+                              ? faArrowRightArrowLeft
+                              : isPositive
+                              ? faArrowTrendUp
+                              : faArrowTrendDown
+                          }
+                          className="text-sm"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {trx.description}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[9px] font-semibold uppercase ${methodMeta.badge}`}
+                          >
+                            {methodMeta.tag}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(trx.date).toLocaleDateString('id-ID', {
+                              day: 'numeric',
+                              month: 'short',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div
+                        className={`text-xs font-extrabold font-jakarta ${
+                          isTransfer
+                            ? 'text-blue-600'
+                            : isPositive
+                            ? 'text-emerald-600'
+                            : 'text-rose-600'
+                        }`}
+                      >
+                        {isTransfer ? '' : isPositive ? '+' : '-'}{formatRupiah(trx.amount)}
+                      </div>
+                      <div className="flex items-center justify-end gap-2 mt-1">
+                        {!isTransfer && (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(trx)}
+                            className="text-[11px] text-slate-400 hover:text-blue-600 p-1"
+                            title="Edit"
+                          >
+                            <FontAwesomeIcon icon={faPenToSquare} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(trx.id, trx.description)}
+                          className="text-[11px] text-slate-400 hover:text-rose-600 p-1"
+                          title="Hapus"
+                        >
+                          <FontAwesomeIcon icon={faTrashCan} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
         {/* Footer Pagination */}
