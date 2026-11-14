@@ -18,6 +18,7 @@
   node_bundler = "esbuild"
   external_node_modules = ["@prisma/client"]
   included_files = ["node_modules/.prisma/client/**", "backend/node_modules/.prisma/client/**"]
+  timeout = 26
 
 [[redirects]]
   from = "/api/*"
