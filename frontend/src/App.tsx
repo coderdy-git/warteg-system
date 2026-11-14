@@ -8,6 +8,7 @@ import { ReportsPage } from './features/reports/ReportsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { AIChatDrawer } from './features/ai/AIChatDrawer';
 import { MobileBottomNav } from './components/ui/MobileBottomNav';
+import { PWAInstallPrompt } from './components/ui/PWAInstallPrompt';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faChartPie, 
@@ -737,6 +738,9 @@ export function App() {
         }}
         onTransactionUpdated={() => fetchData(false)}
       />
+
+      {/* Banner / Popup Install PWA jika belum terpasang */}
+      <PWAInstallPrompt />
     </div>
   );
 }
