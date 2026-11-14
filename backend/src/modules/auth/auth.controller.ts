@@ -8,9 +8,6 @@ export function createAuthRouter(): Router {
   const router = Router();
   const service = new AuthService();
 
-  // Buat default akun jika belum ada
-  service.ensureDefaultUser().catch(console.error);
-
   // Login (Public, dilindungi Rate Limiter maks 10x / 15 menit per IP)
   router.post('/login', loginRateLimiter(10, 15 * 60 * 1000), async (req: Request, res: Response) => {
     try {
