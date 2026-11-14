@@ -64,18 +64,20 @@ Jawablah secara singkat, padat, ramah, dan to-the-point khas operasional warteg.
    - Contoh: Jika pengguna bertanya saldo kas toko, HANYA sebutkan saldo kas toko. Jangan sebutkan saldo pos lain kecuali diminta.
 
 2. KEMAMPUAN MENCATAT TRANSAKSI OTOMATIS:
-   - Jika pengguna bermaksud mencatat transaksi (contoh: "catat belanja cabai 30.000 dari kas toko", "masukkan pemasukan 200rb ke qris dana", atau konfirmasi foto nota belanja):
-   - Kamu WAJIB menyertakan blok JSON khusus di AKHIR jawabanmu dengan format berikut:
+   - Jika pengguna bermaksud mencatat transaksi, atau mengirimkan foto nota/struk belanja:
+   - Berikan rincian singkat barang & total belanja.
+   - Jika pengguna meminta dicatat atau foto adalah struk belanja operasional warteg, sertakan blok JSON khusus di AKHIR jawabanmu dengan format berikut (HANYA JSON murni di dalam tag):
    <<<TRANSACTION_RECORD>>>
    {
-     "type": "expense" | "income",
-     "amount": <angka_nominal_rupiah_integer>,
-     "method": "tunai_toko" | "tunai_kas_besar" | "qris_dana" | "qris_gopay",
-     "description": "<keterangan_singkat>",
+     "type": "expense",
+     "amount": 50000,
+     "method": "tunai_toko",
+     "description": "Belanja Pasar: Bumbu & Sayur",
      "date": "YYYY-MM-DD"
    }
    <<<END_TRANSACTION_RECORD>>>
-   - Sistem backend akan membaca blok ini dan langsung menyimpannya ke database warteg!
+   - Nilai "amount" WAJIB berupa angka integer murni (tanpa titik, tanpa 'Rp').
+   - Sistem backend akan membaca blok ini dan otomatis menyimpannya ke database warteg!
 
 [DATA KEUANGAN UNTUK REFERENSI INTERNAL KAMU]
 - Total Saldo Kas: Rp ${summary.totalBalance.toLocaleString('id-ID')}
@@ -150,30 +152,44 @@ ${recentTrxText || 'Belum ada transaksi tercatat.'}`;
 
       let rawResponse = response.choices[0]?.message?.content || '';
 
-      // Cek apakah ada instruksi pencatatan transaksi otomatis (<<<TRANSACTION_RECORD>>>)
+      // Ekstraksi blok transaksi otomatis (<<<TRANSACTION_RECORD>>> ... <<<END_TRANSACTION_RECORD>>>)
       const recordMatch = rawResponse.match(/<<<TRANSACTION_RECORD>>>([\s\S]*?)<<<END_TRANSACTION_RECORD>>>/);
       let executedTransaction = false;
 
       if (recordMatch && recordMatch[1]) {
         try {
-          const parsed = JSON.parse(recordMatch[1].trim());
-          if (parsed.amount && parsed.description) {
-            await this.transactionsRepo.create({
-              type: parsed.type === 'income' ? 'income' : 'expense',
-              amount: Math.abs(parseInt(parsed.amount, 10)),
-              method: ['tunai_toko', 'tunai_kas_besar', 'qris_dana', 'qris_gopay'].includes(parsed.method)
-                ? parsed.method
-                : 'tunai_toko',
-              description: parsed.description,
-              date: parsed.date || new Date().toISOString().slice(0, 10),
-            });
-            executedTransaction = true;
+          // Bersihkan karakter aneh atau markdown di dalam blok json
+          const rawBlock = recordMatch[1]
+            .replace(/```json/gi, '')
+            .replace(/```/g, '')
+            .trim();
+
+          const jsonCandidate = rawBlock.match(/\{[\s\S]*\}/);
+          if (jsonCandidate) {
+            const parsed = JSON.parse(jsonCandidate[0]);
+            if (parsed && (parsed.amount || parsed.totalAmount)) {
+              const rawAmt = parsed.amount !== undefined ? parsed.amount : parsed.totalAmount;
+              const numericAmount = Math.abs(parseInt(String(rawAmt).replace(/[^0-9]/g, ''), 10));
+
+              if (!isNaN(numericAmount) && numericAmount > 0) {
+                await this.transactionsRepo.create({
+                  type: parsed.type === 'income' ? 'income' : 'expense',
+                  amount: numericAmount,
+                  method: ['tunai_toko', 'tunai_kas_besar', 'qris_dana', 'qris_gopay'].includes(parsed.method)
+                    ? parsed.method
+                    : 'tunai_toko',
+                  description: String(parsed.description || 'Belanja Bahan Warteg'),
+                  date: parsed.date || new Date().toISOString().slice(0, 10),
+                });
+                executedTransaction = true;
+              }
+            }
           }
         } catch (e) {
-          console.error('Gagal parse blok transaksi AI:', e);
+          console.error('Gagal parse blok transaksi AI (diabaikan agar chat tidak crash):', e);
         }
 
-        // Bersihkan blok kode JSON teknis dari balasan chat agar tidak terlihat pengguna
+        // Hapus blok teknis dari tampilan chat agar teks rapi
         rawResponse = rawResponse.replace(/<<<TRANSACTION_RECORD>>>[\s\S]*?<<<END_TRANSACTION_RECORD>>>/g, '').trim();
         if (executedTransaction) {
           rawResponse += '\n\n*(✅ Berhasil dicatat langsung ke pembukuan kas warteg!)*';
@@ -225,22 +241,23 @@ Tugasmu adalah menganalisis gambar foto struk belanja, bon pasar, nota pembelian
 
 Ekstrak informasi dan balas HANYA dalam format JSON valid murni (tanpa format markdown, tanpa petik tiga \`\`\`json, hanya raw JSON):
 {
-  "totalAmount": <angka_nominal_total_belanja_tanpa_titik_atau_koma_integer>,
-  "description": "<ringkasan_singkat_contoh_Belanja_Pasar_Bawang_Cabai_Telur>",
-  "date": "<tanggal_struk_format_YYYY-MM-DD_jika_tidak_tertera_gunakan_hari_ini>",
+  "totalAmount": 100000,
+  "description": "Belanja Pasar: Bumbu & Sayur",
+  "date": "YYYY-MM-DD",
   "suggestedType": "expense",
   "items": [
-    { "name": "<nama_item>", "price": <harga_angka_integer> }
+    { "name": "Bawang Merah 1kg", "price": 35000 }
   ]
 }
 
 Aturan:
-1. Targetkan total nominal rupiah akhir yang dibayarkan.
-2. Deskripsi harus ringkas dan jelas khas belanja warteg (contoh: "Belanja Pasar: Bumbu & Sayur", "Belanja Beras 50kg", "Belanja Gas Elpiji 3kg").
-3. Jika nominal tidak terlihat jelas, estimasikan secara wajar berdasarkan item yang terbaca.`;
+1. "totalAmount" WAJIB berupa integer angka murni tanpa titik atau koma.
+2. Targetkan total nominal rupiah akhir yang dibayarkan.
+3. Deskripsi harus ringkas dan jelas khas belanja warteg (contoh: "Belanja Pasar: Bumbu & Sayur", "Belanja Beras 50kg", "Belanja Gas Elpiji 3kg").
+4. Jika nominal tidak terlihat jelas, estimasikan secara wajar berdasarkan item yang terbaca.`;
 
-    // Gunakan model yang terdaftar di konfigurasi (default: deepseek-chat atau model deepseek aktif)
-    const targetModel = config.model || 'deepseek-chat';
+    // Gunakan model yang mendukung vision (deepseek-flash atau model konfigurasi)
+    const targetModel = config.model === 'deepseek-chat' ? 'deepseek-flash' : (config.model || 'deepseek-flash');
 
     const response = await openai.chat.completions.create({
       model: targetModel,
@@ -262,22 +279,45 @@ Aturan:
     });
 
     const rawContent = response.choices[0]?.message?.content || '{}';
-    const cleanedJson = rawContent
+    const cleanedContent = rawContent
       .replace(/```json/gi, '')
       .replace(/```/g, '')
       .trim();
 
-    try {
-      const parsed = JSON.parse(cleanedJson);
-      return {
-        totalAmount: Number(parsed.totalAmount) || 0,
-        description: parsed.description || 'Belanja Pasar / Operasional Warteg',
-        date: parsed.date || new Date().toISOString().slice(0, 10),
-        suggestedType: 'expense',
-        items: Array.isArray(parsed.items) ? parsed.items : [],
-      };
-    } catch {
-      throw new Error('Gagal memproses struk: Format respons tidak valid. Coba ulangi dengan foto yang lebih terang.');
+    // Ekstraksi blok JSON tahan banting menggunakan regex
+    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const rawAmt = parsed.totalAmount !== undefined ? parsed.totalAmount : parsed.amount;
+        const totalAmount = Math.abs(parseInt(String(rawAmt || 0).replace(/[^0-9]/g, ''), 10)) || 0;
+
+        return {
+          totalAmount,
+          description: parsed.description || 'Belanja Pasar / Operasional Warteg',
+          date: parsed.date || new Date().toISOString().slice(0, 10),
+          suggestedType: 'expense',
+          items: Array.isArray(parsed.items) ? parsed.items : [],
+        };
+      } catch (err) {
+        console.error('Gagal parse JSON struk:', err);
+      }
     }
+
+    // Jika gagal parse JSON, coba ekstrak nominal angka dari teks bebas AI
+    const nominalMatch = rawContent.match(/(?:total|rp|sebesar|nominal)[\s:]*([0-9.,]+)/i);
+    let fallbackAmount = 0;
+    if (nominalMatch && nominalMatch[1]) {
+      fallbackAmount = parseInt(nominalMatch[1].replace(/[^0-9]/g, ''), 10) || 0;
+    }
+
+    return {
+      totalAmount: fallbackAmount,
+      description: 'Belanja Pasar / Operasional Warteg',
+      date: new Date().toISOString().slice(0, 10),
+      suggestedType: 'expense',
+      items: [],
+    };
   }
 }
