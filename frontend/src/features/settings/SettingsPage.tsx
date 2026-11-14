@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { useNotification } from '../../components/ui/NotificationProvider';
-import { KeyRound, Server, Cpu, Lock, ShieldCheck } from 'lucide-react';
+import { KeyRound, Server, Cpu, Lock, ShieldCheck, LogOut, User } from 'lucide-react';
 
-export const SettingsPage: React.FC = () => {
-  const { showToast } = useNotification();
+interface SettingsPageProps {
+  onLogout?: () => void;
+  currentUser?: { name: string; username: string; role: string } | null;
+}
+
+export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, currentUser }) => {
+  const { showToast, confirm } = useNotification();
 
   // AI Settings State (Kunci mati ke DeepSeek)
   const [apiKey, setApiKey] = useState('');
@@ -218,6 +223,53 @@ export const SettingsPage: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* SECTION 3: PROFIL & KELUAR / LOGOUT */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-2xs space-y-4">
+        <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 font-jakarta flex items-center gap-2">
+              <User className="w-4 h-4 text-slate-500" />
+              Sesi Login & Akun
+            </h3>
+            <p className="text-[11px] text-slate-400">Informasi akun pengguna yang sedang aktif saat ini.</p>
+          </div>
+        </div>
+
+        {currentUser && (
+          <div className="flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+            <div>
+              <p className="text-xs font-bold text-slate-800">{currentUser.name}</p>
+              <p className="text-[11px] text-slate-500">Username: <span className="font-semibold text-slate-700">{currentUser.username}</span> ({currentUser.role})</p>
+            </div>
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
+              Aktif
+            </span>
+          </div>
+        )}
+
+        <div className="pt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              confirm({
+                title: 'Konfirmasi Keluar',
+                message: 'Apakah Anda yakin ingin keluar dari sistem kasir warteg?',
+                confirmLabel: 'Ya, Keluar',
+                cancelLabel: 'Batal',
+                isDanger: true,
+                onConfirm: () => {
+                  onLogout?.();
+                },
+              });
+            }}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Keluar Akun (Logout)</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

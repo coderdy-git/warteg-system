@@ -105,47 +105,6 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row text-slate-900 font-sans antialiased selection:bg-orange-500 selection:text-white">
-      {/* Mobile Top App Bar (Header Ringkas Khusus Smartphone: Profil & Status Toko) */}
-      <div className="md:hidden h-14 bg-white border-b border-slate-200/80 px-4 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white font-extrabold text-xs shadow-xs font-jakarta">
-            W
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-slate-900 text-xs tracking-tight font-jakarta">
-                {currentUser.name}
-              </span>
-              <span
-                className={`px-1.5 py-0.2 rounded text-[8px] font-bold uppercase tracking-wider border ${activeBadgeStyle}`}
-              >
-                {currentEnv === 'development' ? 'DEV' : currentEnv}
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 capitalize">{currentUser.role} Warteg</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => fetchData(true)}
-            disabled={loading}
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-            title="Segarkan Data"
-          >
-            <FontAwesomeIcon icon={faRotate} className={`text-xs ${loading ? 'animate-spin text-orange-600' : ''}`} />
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-            title="Keluar"
-          >
-            <FontAwesomeIcon icon={faRightFromBracket} className="text-xs" />
-          </button>
-        </div>
-      </div>
-
       {/* Sidebar Navigasi Kiri (MURNI DESKTOP: hidden md:flex) */}
       <aside className="hidden md:flex fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200/70 flex-col justify-between shrink-0 md:static md:translate-x-0 md:h-screen md:sticky md:top-0">
         <div>
@@ -716,7 +675,7 @@ export function App() {
 
           {/* TAB 4: PENGATURAN AI */}
           {activeTab === 'settings' && (
-            <SettingsPage />
+            <SettingsPage currentUser={currentUser} onLogout={handleLogout} />
           )}
         </main>
       </div>
