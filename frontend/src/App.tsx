@@ -26,9 +26,7 @@ import {
   faVault,
   faQrcode,
   faMobileScreenButton,
-  faArrowRightArrowLeft,
-  faBars,
-  faXmark
+  faArrowRightArrowLeft
 } from '@fortawesome/free-solid-svg-icons';
 
 export function App() {
@@ -43,7 +41,6 @@ export function App() {
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const fetchData = async (isManualClick = false) => {
     if (!currentUser) return;
@@ -107,54 +104,49 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row text-slate-900 font-sans antialiased selection:bg-orange-500 selection:text-white">
-      {/* Mobile Top Header (Hanya tampil di layar kecil / Smartphone) */}
+      {/* Mobile Top App Bar (Header Ringkas Khusus Smartphone: Profil & Status Toko) */}
       <div className="md:hidden h-14 bg-white border-b border-slate-200/80 px-4 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 -ml-1 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
-            aria-label="Toggle menu"
-          >
-            <FontAwesomeIcon icon={isMobileMenuOpen ? faXmark : faBars} className="text-base" />
-          </button>
-          <div className="w-7 h-7 rounded-lg bg-orange-600 flex items-center justify-center text-white font-extrabold text-xs shadow-xs font-jakarta">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white font-extrabold text-xs shadow-xs font-jakarta">
             W
           </div>
-          <span className="font-bold text-slate-900 text-sm tracking-tight font-jakarta">
-            WSystem
-          </span>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-slate-900 text-xs tracking-tight font-jakarta">
+                {currentUser.name}
+              </span>
+              <span
+                className={`px-1.5 py-0.2 rounded text-[8px] font-bold uppercase tracking-wider border ${activeBadgeStyle}`}
+              >
+                {currentEnv === 'development' ? 'DEV' : currentEnv}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 capitalize">{currentUser.role} Warteg</p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${activeBadgeStyle}`}
-          >
-            {currentEnv === 'development' ? 'DEV' : currentEnv}
-          </span>
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setIsAIChatOpen(true)}
-            className="p-1.5 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
-            title="Tanya AI"
+            onClick={() => fetchData(true)}
+            disabled={loading}
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            title="Segarkan Data"
           >
-            <FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" />
+            <FontAwesomeIcon icon={faRotate} className={`text-xs ${loading ? 'animate-spin text-orange-600' : ''}`} />
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+            title="Keluar"
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} className="text-xs" />
           </button>
         </div>
       </div>
 
-      {/* Overlay latar belakang saat sidebar mobile terbuka */}
-      {isMobileMenuOpen && (
-        <div
-          onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 bg-slate-900/40 z-40 md:hidden backdrop-blur-xs transition-opacity"
-        />
-      )}
-
-      {/* Sidebar Navigasi Kiri (Desktop Sticky + Mobile Drawer Slide-in) */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200/70 flex flex-col justify-between shrink-0 transition-transform duration-200 ease-in-out md:static md:translate-x-0 md:h-screen md:sticky md:top-0 ${
-          isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
-        }`}
-      >
+      {/* Sidebar Navigasi Kiri (MURNI DESKTOP: hidden md:flex) */}
+      <aside className="hidden md:flex fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200/70 flex-col justify-between shrink-0 md:static md:translate-x-0 md:h-screen md:sticky md:top-0">
         <div>
           {/* Brand Header */}
           <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100">
@@ -167,28 +159,17 @@ export function App() {
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span
-                className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${activeBadgeStyle}`}
-              >
-                {currentEnv === 'development' ? 'DEV' : currentEnv}
-              </span>
-              <button
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <FontAwesomeIcon icon={faXmark} className="text-sm" />
-              </button>
-            </div>
+            <span
+              className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${activeBadgeStyle}`}
+            >
+              {currentEnv === 'development' ? 'DEV' : currentEnv}
+            </span>
           </div>
 
           {/* Navigation Links (FontAwesome Icons) */}
           <nav className="p-3.5 space-y-1.5">
             <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setIsMobileMenuOpen(false);
-              }}
+              onClick={() => setActiveTab('dashboard')}
               className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === 'dashboard'
                   ? 'bg-orange-50/80 text-orange-700 font-bold'
@@ -199,10 +180,7 @@ export function App() {
               <span>Dashboard</span>
             </button>
             <button
-              onClick={() => {
-                setActiveTab('transactions');
-                setIsMobileMenuOpen(false);
-              }}
+              onClick={() => setActiveTab('transactions')}
               className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 activeTab === 'transactions'
                   ? 'bg-orange-50/80 text-orange-700 font-bold'
@@ -213,10 +191,7 @@ export function App() {
               <span>Transaksi Kas</span>
             </button>
             <button
-              onClick={() => {
-                setActiveTab('reports');
-                setIsMobileMenuOpen(false);
-              }}
+              onClick={() => setActiveTab('reports')}
               className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 activeTab === 'reports'
                   ? 'bg-orange-50/80 text-orange-700 font-bold'
@@ -232,10 +207,7 @@ export function App() {
         {/* Bottom Sidebar: AI Trigger, Settings & User Profile */}
         <div className="p-3.5 border-t border-slate-100 space-y-2.5">
           <button
-            onClick={() => {
-              setIsAIChatOpen(true);
-              setIsMobileMenuOpen(false);
-            }}
+            onClick={() => setIsAIChatOpen(true)}
             className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold bg-orange-50/60 text-orange-800 hover:bg-orange-100/70 border border-orange-200/50 transition-all"
           >
             <div className="flex items-center gap-3">
@@ -246,10 +218,7 @@ export function App() {
           </button>
 
           <button
-            onClick={() => {
-              setActiveTab('settings');
-              setIsMobileMenuOpen(false);
-            }}
+            onClick={() => setActiveTab('settings')}
             className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
               activeTab === 'settings'
                 ? 'bg-slate-100 text-slate-900 font-bold'
