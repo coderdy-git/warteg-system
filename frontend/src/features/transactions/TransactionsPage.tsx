@@ -15,6 +15,7 @@ import {
   faChevronLeft,
   faChevronRight,
   faCamera,
+  faImage,
   faWandMagicSparkles,
 } from '@fortawesome/free-solid-svg-icons';
 
@@ -66,7 +67,9 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Vision AI OCR Scan State
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [showPickerSheet, setShowPickerSheet] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ReceiptScanResult | null>(null);
   const [showScanModal, setShowScanModal] = useState(false);
@@ -97,7 +100,8 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
         showToast('error', 'Gagal Membaca Struk', err.message || 'Coba ambil foto dengan pencahayaan lebih jelas.');
       } finally {
         setIsScanning(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
+        if (galleryInputRef.current) galleryInputRef.current.value = '';
       }
     };
     reader.readAsDataURL(file);
@@ -253,21 +257,30 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Input File Tersembunyi dengan dukungan kamera native HP */}
+          {/* 1. Input Kamera Native HP */}
           <input
             type="file"
-            ref={fileInputRef}
+            ref={cameraInputRef}
             onChange={handleFileChange}
             accept="image/*"
             capture="environment"
             className="hidden"
           />
 
+          {/* 2. Input Galeri / File Manager (Tanpa capture) */}
+          <input
+            type="file"
+            ref={galleryInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            className="hidden"
+          />
+
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setShowPickerSheet(true)}
             className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-semibold shadow-2xs transition-all active:scale-95"
-            title="Foto Struk / Bon Belanja Pasar"
+            title="Foto / Upload Struk Belanja"
           >
             <FontAwesomeIcon icon={faCamera} className="text-xs" />
             <span>Scan Struk</span>
@@ -816,6 +829,70 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
           </div>
         </div>
       )}
+      {/* MODAL PILIHAN INPUT FOTO: KAMERA ATAU GALERI */}
+      {showPickerSheet && (
+        <div
+          onClick={() => setShowPickerSheet(false)}
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-2xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 transition-opacity"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 space-y-4 animate-in slide-in-from-bottom-5 duration-200"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <span className="text-xs font-bold text-slate-900 font-jakarta uppercase tracking-wider">
+                Pilih Sumber Foto Struk
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPickerSheet(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              {/* Opsi 1: Buka Kamera */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPickerSheet(false);
+                  cameraInputRef.current?.click();
+                }}
+                className="flex flex-col items-center justify-center p-4 rounded-2xl bg-orange-50/70 border border-orange-200/60 hover:bg-orange-100 active:scale-95 transition-all text-center gap-2"
+              >
+                <div className="w-12 h-12 rounded-full bg-orange-600 text-white flex items-center justify-center text-lg shadow-sm">
+                  <FontAwesomeIcon icon={faCamera} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Buka Kamera</p>
+                  <p className="text-[10px] text-slate-500">Foto nota langsung</p>
+                </div>
+              </button>
+
+              {/* Opsi 2: Buka Galeri */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPickerSheet(false);
+                  galleryInputRef.current?.click();
+                }}
+                className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-slate-100 active:scale-95 transition-all text-center gap-2"
+              >
+                <div className="w-12 h-12 rounded-full bg-slate-800 text-white flex items-center justify-center text-lg shadow-sm">
+                  <FontAwesomeIcon icon={faImage} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Galeri Foto</p>
+                  <p className="text-[10px] text-slate-500">Pilih dari album HP</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 3: HASIL SCAN STRUK VISION AI */}
       {showScanModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
